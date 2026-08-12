@@ -2,8 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ROOT } from "../config.js";
 
-export async function readFileTool(relPath: string) {
-    const full = path.join(ROOT, relPath);
-
-    return await fs.readFile(full, "utf8");
+export async function readFileTool(relativePath: string) {
+    const fullPath = path.join(ROOT, relativePath);
+    return fs.readFile(fullPath, "utf8");
 }

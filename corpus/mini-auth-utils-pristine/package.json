@@ -1,0 +1,13 @@
+{
+    "name": "mini-auth-utils",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "test": "vitest run"
+    },
+    "devDependencies": {
+        "@types/node": "^26.2.0",
+        "typescript": "^5.9.2",
+        "vitest": "^2.1.9"
+    }
+}

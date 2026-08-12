@@ -1,17 +1,14 @@
 {
     "name": "agent-loop-mcp",
     "private": true,
-    "packageManager": "pnpm@10.0.0",
-    "workspaces": [
-        "packages/*",
-        "corpus/*"
-    ],
+    "packageManager": "pnpm@9.15.0",
     "scripts": {
         "agent": "pnpm --filter @intern/agent agent",
-        "eval": "tsx evals/run-evals.ts"
+        "eval": "pnpm --filter @intern/agent eval"
     },
     "devDependencies": {
-        "tsx": "^4.20.5",
+        "@types/node": "^26.2.0",
+        "tsx": "^4.20.3",
         "typescript": "^5.9.2"
     }
 }

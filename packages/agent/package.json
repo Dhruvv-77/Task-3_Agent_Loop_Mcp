@@ -3,13 +3,15 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "agent": "tsx src/cli.ts"
+        "agent": "tsx src/cli.ts",
+        "eval": "tsx src/eval.ts",
+        "mcp": "tsx src/mcp/server.ts"
     },
     "dependencies": {
-        "zod": "^3.23.8"
+        "@modelcontextprotocol/sdk": "^1.17.4",
+        "zod": "^3.24.1"
     },
     "devDependencies": {
-        "tsx": "^4.20.5",
-        "typescript": "^5.9.2"
+        "@types/node": "^24.3.0"
     }
 }
