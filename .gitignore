@@ -5,7 +5,4 @@ coverage
 .DS_Store
 Thumbs.db
 evals/report.json
-PROJECT_CONTEXT.md
-ANTIGRAVITY_PROMPT.md
-PLAN.md
 .env
