@@ -1,5 +1,5 @@
 export function normalizePath(p: string): string {
-    return p.replace("\\\\", "/"); // BUG
+    return p.replace("\\", "/"); // BUG
 }
 
 export function joinPath(a: string, b: string): string {

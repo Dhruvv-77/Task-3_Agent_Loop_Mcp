@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getRequestTimeout } from "../src/config.js";
+import { getTimeout } from "../src/config.js";
 
-describe("getRequestTimeout", () => {
-    it("defaults to 3000ms", () => {
+describe("getTimeout", () => {
+    it("defaults to 3000 ms", () => {
         delete process.env.REQUEST_TIMEOUT;
-        expect(getRequestTimeout()).toBe(3000);
+        expect(getTimeout()).toBe(3000);
     });
 });

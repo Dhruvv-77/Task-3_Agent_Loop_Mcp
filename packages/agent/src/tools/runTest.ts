@@ -1,24 +1,25 @@
 import { execSync } from "node:child_process";
-import path from "node:path";
+import { BROKEN_CORPUS } from "../config.js";
 
-export function runTest(testName: string) {
-    const cwd = path.resolve(process.cwd(), "corpus/mini-auth-utils-broken");
-
-    try {
+export function runTest(testFile: string): { success: boolean; output: string } {
+    const cwd = BROKEN_CORPUS; try {
         const output = execSync(
-            `pnpm test -- ${testName}`,
+            `pnpm exec vitest run tests/${testFile}`,
             {
                 cwd,
                 encoding: "utf8",
-                stdio: "pipe"
+                stdio: "pipe",
             }
         );
 
+
         return { success: true, output };
+
+
     } catch (err: any) {
         return {
             success: false,
-            output: err.stdout?.toString() ?? err.message
+            output: err.stderr?.toString() || err.stdout?.toString() || err.message,
         };
     }
 }

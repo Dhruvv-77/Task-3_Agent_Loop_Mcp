@@ -7,26 +7,28 @@ async function walk(dir: string): Promise<string[]> {
         withFileTypes: true
     });
 
+
     const files: string[] = [];
 
-    for (const e of entries) {
-        const full = path.join(dir, e.name);
+    for (const entry of entries) {
+        const full = path.join(dir, entry.name);
 
-
-        if (e.isDirectory()) {
+        if (entry.isDirectory()) {
+            if (entry.name === "node_modules") continue;
             files.push(...(await walk(full)));
         } else {
             files.push(full);
         }
-
-
     }
 
     return files;
+
+
 }
 
-export async function grepTool(pattern: string) {
+export async function grepTool(pattern: string): Promise<string> {
     const files = await walk(ROOT);
+
 
     const matches: string[] = [];
 
@@ -36,9 +38,11 @@ export async function grepTool(pattern: string) {
         if (text.includes(pattern)) {
             matches.push(path.relative(ROOT, file));
         }
-
-
     }
 
-    return matches;
+    return matches.length
+        ? matches.join("\n")
+        : "No matches found";
+
+
 }

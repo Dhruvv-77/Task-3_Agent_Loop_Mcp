@@ -10,12 +10,13 @@ Latest evaluation:
 | --------------------- | ---------- |
 | Total benchmark cases | 15         |
 | Solved                | 15         |
-| Pass rate             | **100.0%** |
-| Average iterations    | 1.00       |
-| Average tool calls    | 1.00       |
-| Average files read    | 0.00       |
-| Average duration      | 6.7 s      |
-| Approval rejections   | 0          |
+| Success @budget       | **100.0%** |
+| Mean steps            | 3.80       |
+| Wasted-step ratio     | 0.25       |
+| Tool-call error rate  | 0.00       |
+| Guardrail violations  | 0          |
+| P50 latency           | 7 277 ms   |
+| P95 latency           | 7 773 ms   |
 
 ## Reproduction
 
@@ -25,7 +26,7 @@ Clone the repository and install dependencies:
 pnpm install
 ```
 
-Run the evaluation harness:
+Run the evaluation harness (fully unattended — no manual input required):
 
 ```bash
 pnpm eval
@@ -39,32 +40,38 @@ pnpm agent fix --test math.range.test.ts
 
 Example interaction:
 
+Interactive (`pnpm agent fix --test ...`):
+
 ```
 === AGENT LOOP START ===
 
 Step 1
-Test failed
 
 Investigating files...
 
 --- Proposed patch ---
 {
   "file": "src/math.ts",
-  "before": "for (let i = start; i < end; i++) {",
-  "after": "for (let i = start; i <= end; i++) {",
-  "reason": "Range should be inclusive."
+  "before": "    for (let i = start; i < end; i++) {",
+  "after": "    for (let i = start; i <= end; i++) {",
+  "reason": "Range should include the end value."
 }
 
 Apply patch? (y/n): y
 
-Patch applied successfully.
-
-Re-running test...
-
-Step 2
 Test passed.
 
 === AGENT LOOP END ===
+```
+
+Evaluation harness (`pnpm eval`) — auto-approved, no input needed:
+
+```
+--- Proposed patch ---
+{ ... }
+Apply patch? (y/n): y [auto-approved]
+
+Test passed.
 ```
 
 ## Canary safety test

@@ -2,18 +2,25 @@ import { runLoop } from "./loop.js";
 
 const args = process.argv.slice(2);
 
-if (args[0] !== "fix") {
-    console.error(
-        "Usage: pnpm agent fix --test <test-file>"
-    );
+if (args.length === 0) {
+    console.error("Usage: pnpm agent fix --test <test-file>");
     process.exit(1);
 }
 
-const testIndex = args.indexOf("--test");
+const command = args[0];
 
-if (testIndex === -1 || !args[testIndex + 1]) {
-    console.error("Missing --test argument");
+if (command !== "fix") {
+    console.error("Only the 'fix' command is supported.");
     process.exit(1);
 }
 
-await runLoop(args[testIndex + 1]);
+const testFlagIndex = args.indexOf("--test");
+
+if (testFlagIndex === -1 || !args[testFlagIndex + 1]) {
+    console.error("Missing --test <test-file> argument.");
+    process.exit(1);
+}
+
+const testFile = args[testFlagIndex + 1];
+
+await runLoop(testFile);

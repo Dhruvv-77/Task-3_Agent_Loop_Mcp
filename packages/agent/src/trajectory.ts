@@ -1,32 +1,33 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { TRAJECTORY_DIR } from "./config.js";
 
-const DIR = path.resolve(
-    process.cwd(),
-    "packages/agent/trajectories"
-);
+let currentLog = path.join(TRAJECTORY_DIR, "run.jsonl");
 
-let currentLog = path.join(DIR, "run.jsonl");
-
-export function setTrajectoryFile(test: string) {
-    currentLog = path.join(DIR, `${test}.jsonl`);
+export function setTrajectoryFile(test: string): void {
+    currentLog = path.join(TRAJECTORY_DIR, `${test}.jsonl`);
 }
 
-export async function clearLog() {
-    await fs.mkdir(DIR, { recursive: true });
+export async function clearLog(): Promise<void> {
+    await fs.mkdir(TRAJECTORY_DIR, { recursive: true });
     await fs.writeFile(currentLog, "");
 }
 
-export async function log(entry: Record<string, unknown>) {
+export async function log(entry: Record<string, unknown>): Promise<void> {
+    await fs.mkdir(TRAJECTORY_DIR, { recursive: true });
+
+
     await fs.appendFile(
         currentLog,
         JSON.stringify({
             timestamp: new Date().toISOString(),
-            ...entry
+            ...entry,
         }) + "\n"
     );
+
+
 }
 
-export function getCurrentLogPath() {
+export function getCurrentLogPath(): string {
     return currentLog;
 }

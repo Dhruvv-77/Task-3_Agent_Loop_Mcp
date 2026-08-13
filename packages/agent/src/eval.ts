@@ -2,6 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { runLoop } from "./loop.js";
+import {
+    BROKEN_CORPUS,
+    PRISTINE_CORPUS,
+    TRAJECTORY_DIR,
+    EVAL_REPORT,
+    REPO_ROOT
+} from "./config.js";
 
 const TESTS = [
     "math.range.test.ts",
@@ -18,82 +25,147 @@ const TESTS = [
     "string.truncate.test.ts",
     "validator.required.test.ts",
     "config.timeout.test.ts",
-    "path.join.test.ts",
+    "path.join.test.ts"
 ];
 
-const REPO_ROOT = path.resolve(process.cwd(), "../..");
-
-const PRISTINE_DIR = path.join(
-    REPO_ROOT,
-    "corpus",
-    "mini-auth-utils-pristine"
-);
-
-const BROKEN_DIR = path.join(
-    REPO_ROOT,
-    "corpus",
-    "mini-auth-utils-broken"
-);
-
-const TRAJECTORY_DIR = path.join(
-    REPO_ROOT,
-    "packages",
-    "agent",
-    "trajectories"
-);
-
-const REPORT_PATH = path.join(REPO_ROOT, "evals", "report.json");
+async function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 async function resetCorpus() {
-    await fs.rm(BROKEN_DIR, {
-        recursive: true,
-        force: true,
-    });
-
-    await fs.mkdir(BROKEN_DIR, {
-        recursive: true,
-    });
-
-    const entries = await fs.readdir(PRISTINE_DIR);
-
-    for (const entry of entries) {
-        if (entry === "node_modules") continue;
-
-        await fs.cp(
-            path.join(PRISTINE_DIR, entry),
-            path.join(BROKEN_DIR, entry),
-            {
+    // On Windows, vitest may hold file handles briefly after exit.
+    // Retry the rm up to 10 times with a 500ms delay on EBUSY.
+    for (let attempt = 1; attempt <= 10; attempt++) {
+        try {
+            await fs.rm(BROKEN_CORPUS, {
                 recursive: true,
+                force: true
+            });
+            break;
+        } catch (err: any) {
+            if ((err.code === "EBUSY" || err.code === "EPERM") && attempt < 10) {
+                await sleep(500);
+            } else {
+                throw err;
             }
-        );
+        }
     }
 
+    await fs.cp(PRISTINE_CORPUS, BROKEN_CORPUS, {
+        recursive: true,
+        verbatimSymlinks: false,
+        filter: (src) => {
+            const name = path.basename(src);
+            return name !== "node_modules";
+        }
+    });
+
     execSync("pnpm install", {
-        cwd: BROKEN_DIR,
-        stdio: "ignore",
+        cwd: REPO_ROOT,
+        stdio: "ignore"
     });
 }
 
+
 async function readTrajectory(test: string) {
-    const file = path.join(TRAJECTORY_DIR, `${test}.jsonl`);
+    const file = path.join(
+        TRAJECTORY_DIR,
+        `${test}.jsonl`
+    );
+
 
     try {
-        const raw = await fs.readFile(file, "utf8");
+        const text = await fs.readFile(file, "utf8");
 
-        return raw
+        const lines = text
             .trim()
-            .split("\\n")
-            .filter(Boolean)
-            .map((line) => JSON.parse(line));
+            .split("\n")
+            .filter(Boolean);
+
+        let steps = 0;
+        let toolCalls = 0;
+        let filesRead = 0;
+        let approvalRejections = 0;
+        let wastedSteps = 0;
+        let toolCallErrors = 0;
+        let guardrailViolations = 0;
+
+        const seenActions = new Set<string>();
+
+        for (const line of lines) {
+            const event = JSON.parse(line);
+
+            steps++;
+
+            if (
+                event.action === "write_file" ||
+                event.action === "run_test" ||
+                event.action === "propose_edit"
+            ) {
+                toolCalls++;
+            }
+
+            if (event.action === "read_file") {
+                filesRead++;
+            }
+
+            if (event.action === "approval_rejected") {
+                approvalRejections++;
+            }
+
+            if (event.action === "approval_gate_violation") {
+                guardrailViolations++;
+            }
+
+            if (event.action === "tool_call_error") {
+                toolCallErrors++;
+            }
+
+            const signature = `${event.action}:${JSON.stringify(event.output ?? "")} `;
+
+            if (seenActions.has(signature)) {
+                wastedSteps++;
+            }
+
+            seenActions.add(signature);
+        }
+
+        return {
+            steps,
+            toolCalls,
+            filesRead,
+            approvalRejections,
+            wastedSteps,
+            toolCallErrors,
+            guardrailViolations
+        };
     } catch {
-        return [];
+        return {
+            steps: 0,
+            toolCalls: 0,
+            filesRead: 0,
+            approvalRejections: 0,
+            wastedSteps: 0,
+            toolCallErrors: 0,
+            guardrailViolations: 0
+        };
     }
+
+
 }
 
 async function evaluateOne(test: string) {
-    console.log(`Running ${test}...`);
-
     await resetCorpus();
+
+
+    const trajectoryFile = path.join(
+        TRAJECTORY_DIR,
+        `${test}.jsonl`
+    );
+
+    await fs.rm(trajectoryFile, {
+        force: true
+    });
 
     const start = Date.now();
 
@@ -101,110 +173,172 @@ async function evaluateOne(test: string) {
 
     const durationMs = Date.now() - start;
 
-    const events = await readTrajectory(test);
+    let passed = false;
 
-    const iterations = events.filter(
-        (e: any) => e.action === "run_test"
-    ).length;
+    try {
+        execSync(
+            `pnpm exec vitest run tests/${test}`,
+            {
+                cwd: BROKEN_CORPUS,
+                stdio: "ignore"
+            }
+        );
 
-    const toolCalls = events.filter(
-        (e: any) => e.action === "read_file" || e.action === "write_file"
-    ).length;
+        passed = true;
+    } catch {
+        passed = false;
+    }
 
-    const filesRead = events.filter(
-        (e: any) => e.action === "read_file"
-    ).length;
-
-    const approvalRejections = events.filter(
-        (e: any) => e.action === "approval_rejected"
-    ).length;
-
-    const passed =
-        events.length > 0
-            ? events[events.length - 1].success === true
-            : false;
+    const metrics = await readTrajectory(test);
 
     return {
-        id: test.replace(".test.ts", "").replace(/\\./g, "-"),
+        id: test.replace(".test.ts", ""),
         test,
         passed,
         durationMs,
-        iterations,
-        toolCalls,
-        filesRead,
-        approvalRejections,
+        steps: metrics.steps,
+        toolCalls: metrics.toolCalls,
+        filesRead: metrics.filesRead,
+        approvalRejections: metrics.approvalRejections,
+        wastedSteps: metrics.wastedSteps,
+        toolCallErrors: metrics.toolCallErrors,
+        guardrailViolations:
+            metrics.guardrailViolations
     };
+
+
+}
+
+function percentile(values: number[], p: number) {
+    if (values.length === 0) return 0;
+
+
+    const sorted = [...values].sort(
+        (a, b) => a - b
+    );
+
+    const index = Math.floor(
+        (p / 100) * (sorted.length - 1)
+    );
+
+    return sorted[index];
+
+
 }
 
 async function main() {
+    // Enable non-interactive approval for the evaluation harness.
+    // pnpm agent fix --test ... does NOT set this, so it stays interactive.
+    process.env.AUTO_APPROVE = "1";
+
     const results = [];
 
     for (const test of TESTS) {
+        console.log(`Running ${test}...`);
         results.push(await evaluateOne(test));
     }
 
+    // Clean up so the env var does not persist if this module is re-imported.
+    delete process.env.AUTO_APPROVE;
+
     const total = results.length;
-    const solved = results.filter((r) => r.passed).length;
-    const passRate = solved / total;
 
-    const averageDurationMs =
-        results.reduce((a, r) => a + r.durationMs, 0) / total;
+    const solved = results.filter(
+        r => r.passed
+    ).length;
 
-    const averageIterations =
-        results.reduce((a, r) => a + r.iterations, 0) / total;
+    const successful = results.filter(
+        r => r.passed
+    );
 
-    const averageToolCalls =
-        results.reduce((a, r) => a + r.toolCalls, 0) / total;
-
-    const averageFilesRead =
-        results.reduce((a, r) => a + r.filesRead, 0) / total;
-
-    const totalApprovalRejections =
-        results.reduce((a, r) => a + r.approvalRejections, 0);
+    const durations = results.map(
+        r => r.durationMs
+    );
 
     const report = {
         total,
         solved,
-        passRate,
-        averageDurationMs,
-        averageIterations,
-        averageToolCalls,
-        averageFilesRead,
-        totalApprovalRejections,
-        results,
+        successAtBudget: solved / total,
+        meanStepsToSuccess:
+            successful.length === 0
+                ? 0
+                : successful.reduce(
+                    (s, r) => s + r.steps,
+                    0
+                ) / successful.length,
+        wastedStepRatio:
+            results.reduce(
+                (s, r) => s + r.wastedSteps,
+                0
+            ) /
+            Math.max(
+                1,
+                results.reduce(
+                    (s, r) => s + r.steps,
+                    0
+                )
+            ),
+        toolCallErrorRate:
+            results.reduce(
+                (s, r) => s + r.toolCallErrors,
+                0
+            ) /
+            Math.max(
+                1,
+                results.reduce(
+                    (s, r) => s + r.toolCalls,
+                    0
+                )
+            ),
+        guardrailViolations:
+            results.reduce(
+                (s, r) =>
+                    s + r.guardrailViolations,
+                0
+            ),
+        p50LatencyMs: percentile(durations, 50),
+        p95LatencyMs: percentile(durations, 95),
+        results
     };
 
-    await fs.mkdir(path.dirname(REPORT_PATH), {
-        recursive: true,
+    await fs.mkdir(path.dirname(EVAL_REPORT), {
+        recursive: true
     });
 
     await fs.writeFile(
-        REPORT_PATH,
+        EVAL_REPORT,
         JSON.stringify(report, null, 2)
     );
 
-    console.log("\\n=== Evaluation Summary ===");
-    console.log(`Total: ${total}`);
-    console.log(`Solved: ${solved}`);
-    console.log(`Pass rate: ${(passRate * 100).toFixed(1)}%`);
+    console.log("\n=== Evaluation Summary ===");
+    console.log(`Total: ${report.total} `);
+    console.log(`Solved: ${report.solved} `);
     console.log(
-        `Average iterations: ${averageIterations.toFixed(2)}`
+        `Success @budget: ${(report.successAtBudget * 100).toFixed(1)}% `
     );
     console.log(
-        `Average tool calls: ${averageToolCalls.toFixed(2)}`
+        `Mean steps: ${report.meanStepsToSuccess.toFixed(2)} `
     );
     console.log(
-        `Average files read: ${averageFilesRead.toFixed(2)}`
+        `Wasted - step ratio: ${report.wastedStepRatio.toFixed(2)} `
     );
     console.log(
-        `Average duration: ${averageDurationMs.toFixed(0)} ms`
+        `Tool - call error rate: ${report.toolCallErrorRate.toFixed(2)} `
     );
     console.log(
-        `Approval rejections: ${totalApprovalRejections}`
+        `Guardrail violations: ${report.guardrailViolations} `
     );
+    console.log(
+        `P50 latency: ${Math.round(report.p50LatencyMs)} ms`
+    );
+    console.log(
+        `P95 latency: ${Math.round(report.p95LatencyMs)} ms`
+    );
+
+
 }
 
-main().catch((err) => {
+main().catch(err => {
     console.error(err);
     process.exit(1);
 });

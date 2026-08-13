@@ -6,7 +6,7 @@ describe("isSessionExpired", () => {
         expect(isSessionExpired(30)).toBe(true);
     });
 
-    it("does not expire at 29 minutes", () => {
+    it("does not expire before 30 minutes", () => {
         expect(isSessionExpired(29)).toBe(false);
     });
 });

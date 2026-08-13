@@ -1,198 +1,146 @@
+import fs from "node:fs/promises";
 import path from "node:path";
-import { execSync } from "node:child_process";
-import {
-    ROOT,
-    MAX_STEPS,
-    WALL_CLOCK_MS
-} from "./config.js";
-import { readFileTool } from "./tools/readFile.js";
-import { writeFileTool } from "./tools/writeFile.js";
+
 import { proposePatch } from "./planner.js";
 import { requestApproval } from "./approval.js";
-import { clearLog, log, setTrajectoryFile } from "./trajectory.js";
+import { runTest } from "./tools/runTest.js";
+import { readFileTool } from "./tools/readFile.js";
+import { createState, markFileRead } from "./state.js";
+import { log, clearLog, setTrajectoryFile } from "./trajectory.js";
+import { BROKEN_CORPUS, MAX_STEPS } from "./config.js";
 
-function runTest(test: string) {
-    try {
-        const output = execSync(
-            `npx vitest run tests/${test}`,
-            {
-                cwd: ROOT,
-                encoding: "utf8",
-                stdio: ["ignore", "pipe", "pipe"]
-            }
-        );
+export async function runLoop(test: string): Promise<void> {
+    const state = createState(test);
 
-        return {
-            passed: true,
-            output
-        };
-    } catch (e: any) {
-        return {
-            passed: false,
-            output:
-                e.stdout ||
-                e.stderr ||
-                String(e)
-        };
-    }
-}
 
-export async function runLoop(test: string) {
     setTrajectoryFile(test);
     await clearLog();
 
     console.log("=== AGENT LOOP START ===");
 
-
-    const startTime = Date.now();
-
-    let lastProposal = "";
-    let duplicateCount = 0;
-
     for (
-        let step = 1;
-        step <= MAX_STEPS;
-        step++
+        state.step = 1;
+        state.step <= MAX_STEPS;
+        state.step++
     ) {
-        if (
-            Date.now() - startTime >
-            WALL_CLOCK_MS
-        ) {
-            console.log(
-                "Wall-clock budget exceeded."
-            );
-            break;
-        }
+        console.log(`\nStep ${state.step} `);
 
-        console.log(`\nStep ${step}`);
-
-        const result = runTest(test);
+        // Tool 1: run_test
+        const testResult = runTest(test);
 
         await log({
-            step,
+            step: state.step,
             action: "run_test",
-            success: result.passed
+            success: testResult.success,
         });
 
-        if (result.passed) {
-            console.log(
-                "\nTest passed."
-            );
-            console.log(
-                "\n=== AGENT LOOP END ==="
-            );
+        if (testResult.success) {
+            state.solved = true;
+            console.log("\nTest passed.");
+            console.log("\n=== AGENT LOOP END ===");
             return;
         }
 
-        console.log(result.output);
+        console.log("\nInvestigating files...");
 
-        console.log(
-            "\nInvestigating files..."
-        );
+        const patch = proposePatch(test);
 
-        await readFileTool(
-            `tests/${test}`
-        );
+        if (!patch) {
+            throw new Error(
+                `No patch proposal available for ${test}`
+            );
+        }
+
+        // Tool 2: read_file
+        const fileText = await readFileTool(patch.file);
+
+        markFileRead(state, patch.file);
 
         await log({
-            step,
+            step: state.step,
             action: "read_file",
-            file: `tests/${test}`
+            file: patch.file,
         });
 
-        const requestedTest =
-            path.basename(test);
+        // Rebuild the expected snippet from the actual file so approval
+        // validation cannot drift after previous edits.
+        const searchText = patch.before
+            .replace(/\\\\/g, "\\")
+            .replace(/\/\/.*$/, "")
+            .trim();
 
-        const proposal =
-            proposePatch(requestedTest);
+        const beforeLine =
+            fileText
+                .split(/\r?\n/)
+                .find(line => line.includes(searchText))
+            ?? searchText;
 
-        if (!proposal) {
-            console.log(
-                "No fix proposal found."
-            );
-            break;
-        }
 
-        const proposalKey =
-            JSON.stringify(proposal);
-
-        if (proposalKey === lastProposal) {
-            duplicateCount++;
-        } else {
-            duplicateCount = 1;
-            lastProposal = proposalKey;
-        }
-
-        if (duplicateCount >= 3) {
-            await log({
-                step,
-                action: "stuck_loop_halt"
-            });
-
-            console.log(
-                "Stuck loop detected."
-            );
-            break;
-        }
-
-        await log({
-            step,
-            action: "propose_edit",
-            file: proposal.file
-        });
-
-        const sourceContent =
-            await readFileTool(
-                proposal.file
-            );
-
-        const approved =
-            await requestApproval(
-                proposal.file,
-                proposal.before,
-                proposal.after,
-                proposal.reason
-            );
+        const approved = await requestApproval(
+            BROKEN_CORPUS,
+            {
+                ...patch,
+                before: beforeLine,
+            }
+        );
 
         if (!approved) {
             await log({
-                step,
-                action: "approval_rejected"
+                step: state.step,
+                action: "approval_rejected",
             });
 
-            console.log(
-                "Patch rejected."
-            );
-            break;
+            console.log("Patch rejected.");
+            console.log("\n=== AGENT LOOP END ===");
+            return;
         }
 
-        const updated =
-            sourceContent.replace(
-                proposal.before,
-                proposal.after
-            );
-
-        await writeFileTool(
-            proposal.file,
-            updated
+        const filePath = path.join(
+            BROKEN_CORPUS,
+            patch.file
         );
+
+        const current = await fs.readFile(
+            filePath,
+            "utf8"
+        );
+
+        const updated = current.replace(
+            beforeLine,
+            patch.after
+        );
+
+        await fs.writeFile(filePath, updated);
+        await log({
+            step: state.step,
+            action: "write_file",
+            file: patch.file,
+        });
+        const final = runTest(test);
 
         await log({
-            step,
-            action: "patch_applied",
-            file: proposal.file
+            step: state.step,
+            action: "run_test",
+            success: final.success,
         });
 
-        console.log(
-            "Patch applied successfully."
-        );
-
-        console.log(
-            "\nRe-running test..."
-        );
+        if (final.success) {
+            state.solved = true;
+            console.log("\nTest passed.");
+            console.log("\n=== AGENT LOOP END ===");
+            return;
+        } else {
+            console.log("\nTest execution output:\n", final.output);
+        }
     }
 
-    console.log(
-        "\n=== AGENT LOOP END ==="
-    );
+    await log({
+        step: state.step,
+        action: "stuck_loop",
+    });
+
+    console.log("\nReached step budget.");
+    console.log("\n=== AGENT LOOP END ===");
+
+
 }
