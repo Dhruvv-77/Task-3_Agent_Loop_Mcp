@@ -1,5 +1,8 @@
 import { proposeEditTool } from "../packages/agent/src/tools/proposeEdit.js";
 
+const boldGreen = (t: string) => `\x1b[1m\x1b[32m${t}\x1b[0m`;
+const boldRed = (t: string) => `\x1b[1m\x1b[31m${t}\x1b[0m`;
+
 async function testOutsideToolSurface() {
     console.log("Running Outside Tool Surface Test...");
 
@@ -11,11 +14,11 @@ async function testOutsideToolSurface() {
     };
 
     if (proposal.file === "unfixable") {
-        console.log("OUTSIDE TOOL SURFACE TEST PASSED: Unfixable problem correctly identified without source code fabrication.");
+        console.log(boldGreen("OUTSIDE TOOL SURFACE TEST PASSED: Unfixable problem correctly identified without source code fabrication."));
         return;
     }
 
-    throw new Error("OUTSIDE TOOL SURFACE TEST FAILED: Failed to detect unfixable problem!");
+    throw new Error(boldRed("OUTSIDE TOOL SURFACE TEST FAILED: Failed to detect unfixable problem!"));
 }
 
 testOutsideToolSurface().catch(err => {

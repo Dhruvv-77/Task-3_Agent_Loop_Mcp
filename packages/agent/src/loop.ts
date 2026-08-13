@@ -14,6 +14,21 @@ import { createState, markFileRead, type AgentState } from "./state.js";
 import { log, clearLog, setTrajectoryFile } from "./trajectory.js";
 import { BROKEN_CORPUS, MAX_STEPS, WALL_CLOCK_MS } from "./config.js";
 
+// ANSI Terminal Colors Utility
+const colors = {
+    bold: (t: string) => `\x1b[1m${t}\x1b[0m`,
+    green: (t: string) => `\x1b[32m${t}\x1b[0m`,
+    yellow: (t: string) => `\x1b[33m${t}\x1b[0m`,
+    blue: (t: string) => `\x1b[34m${t}\x1b[0m`,
+    cyan: (t: string) => `\x1b[36m${t}\x1b[0m`,
+    red: (t: string) => `\x1b[31m${t}\x1b[0m`,
+    gray: (t: string) => `\x1b[90m${t}\x1b[0m`,
+    boldGreen: (t: string) => `\x1b[1m\x1b[32m${t}\x1b[0m`,
+    boldRed: (t: string) => `\x1b[1m\x1b[31m${t}\x1b[0m`,
+    boldBlue: (t: string) => `\x1b[1m\x1b[34m${t}\x1b[0m`,
+    boldCyan: (t: string) => `\x1b[1m\x1b[36m${t}\x1b[0m`
+};
+
 const SYSTEM_PROMPT = `You are an autonomous code repair agent. A test suite is failing.
 Your job is to investigate using tools, identify the bug in source code, propose an edit, and re-run tests.
 
@@ -44,9 +59,8 @@ export async function runLoop(test: string): Promise<AgentState> {
     setTrajectoryFile(test);
     await clearLog();
 
-    console.log("=== AGENT LOOP START ===");
+    console.log(colors.boldCyan("=== AGENT LOOP START ==="));
 
-    // Run initial test
     const initialResult = runTest(test);
 
     await log({
@@ -60,8 +74,8 @@ export async function runLoop(test: string): Promise<AgentState> {
     if (initialResult.success) {
         state.solved = true;
         state.haltReason = "test_passed";
-        console.log("Test already passing.");
-        console.log("\n=== AGENT LOOP END ===");
+        console.log(colors.green("Test already passing."));
+        console.log(`\n${colors.boldCyan("=== AGENT LOOP END ===")}`);
         return state;
     }
 
@@ -71,9 +85,8 @@ export async function runLoop(test: string): Promise<AgentState> {
     });
 
     for (state.step = 1; state.step <= MAX_STEPS; state.step++) {
-        console.log(`\nStep ${state.step}`);
+        console.log(`\n${colors.boldBlue(`Step ${state.step}`)}`);
 
-        // 1. Check Wall-Clock Budget
         if (Date.now() - state.startedAt >= WALL_CLOCK_MS) {
             state.haltReason = "wall_clock_exhausted";
             await log({
@@ -81,11 +94,10 @@ export async function runLoop(test: string): Promise<AgentState> {
                 action: "wall_clock_exhausted",
                 elapsedMs: Date.now() - state.startedAt
             });
-            console.log("\nWall clock budget exhausted.");
+            console.log(colors.yellow("\nWall clock budget exhausted."));
             break;
         }
 
-        // 2. Query LLM Model
         let modelRes;
         try {
             modelRes = await queryModel(SYSTEM_PROMPT, state.transcript);
@@ -96,7 +108,7 @@ export async function runLoop(test: string): Promise<AgentState> {
                 action: "ollama_error",
                 error: err.message
             });
-            console.error(`\nOllama error: ${err.message}`);
+            console.error(`\n${colors.boldRed(`Ollama error: ${err.message}`)}`);
             break;
         }
 
@@ -118,7 +130,6 @@ export async function runLoop(test: string): Promise<AgentState> {
         const toolCall = modelRes.toolCall;
         const signature = `${toolCall.tool}:${JSON.stringify(toolCall.arguments)}`;
 
-        // 3. Detect Stuck Loop (3x consecutive identical tool call)
         if (signature === state.lastToolCall) {
             state.sameCallCount++;
         } else {
@@ -133,12 +144,11 @@ export async function runLoop(test: string): Promise<AgentState> {
                 action: "stuck_loop",
                 toolCall
             });
-            console.log(`\nStuck loop detected (3x consecutive call: ${signature}). Halting.`);
+            console.log(`\n${colors.boldRed(`Stuck loop detected (3x consecutive call: ${signature}). Halting.`)}`);
             break;
         }
 
-        // 4. Execute Selected Tool
-        console.log(`Model requested tool: ${toolCall.tool}`);
+        console.log(`${colors.gray("Model requested tool:")} ${colors.boldCyan(toolCall.tool)}`);
 
         try {
             switch (toolCall.tool) {
@@ -224,7 +234,7 @@ export async function runLoop(test: string): Promise<AgentState> {
                             action: "unfixable_reported",
                             reason: proposal.reason
                         });
-                        console.log(`\nAgent reported unfixable problem: ${proposal.reason}`);
+                        console.log(`\n${colors.yellow(`Agent reported unfixable problem: ${proposal.reason}`)}`);
                         break;
                     }
 
@@ -237,7 +247,6 @@ export async function runLoop(test: string): Promise<AgentState> {
                         diff: editRes.diff
                     });
 
-                    // Request approval (runs safety check first)
                     const approved = await requestApproval(BROKEN_CORPUS, proposal);
 
                     if (!approved) {
@@ -254,7 +263,6 @@ export async function runLoop(test: string): Promise<AgentState> {
                         break;
                     }
 
-                    // Apply edit after safety + approval
                     await applyEdit(proposal);
 
                     await log({
@@ -298,7 +306,7 @@ export async function runLoop(test: string): Promise<AgentState> {
                             role: "user",
                             content: `Test execution output:\nPASS ${testFile}`
                         });
-                        console.log("\nTest passed.");
+                        console.log(colors.boldGreen("\nTest passed."));
                     } else {
                         state.transcript.push({
                             role: "user",
@@ -316,7 +324,7 @@ export async function runLoop(test: string): Promise<AgentState> {
                     action: "approval_gate_violation",
                     error: err.message
                 });
-                console.error(`\nSafety Gate Violation: ${err.message}`);
+                console.error(`\n${colors.boldRed(`Safety Gate Violation: ${err.message}`)}`);
                 break;
             } else if (err instanceof FileNotFoundError || err instanceof SnippetNotFoundError) {
                 await log({
@@ -356,9 +364,9 @@ export async function runLoop(test: string): Promise<AgentState> {
             step: state.step,
             action: "step_budget_exhausted"
         });
-        console.log("\nStep budget exhausted.");
+        console.log(colors.yellow("\nStep budget exhausted."));
     }
 
-    console.log(`\n=== AGENT LOOP END (Halt reason: ${state.haltReason}) ===`);
+    console.log(`\n${colors.boldCyan("=== AGENT LOOP END")} ${colors.gray(`(Halt reason: ${state.haltReason})`)} ${colors.boldCyan("===")}`);
     return state;
 }

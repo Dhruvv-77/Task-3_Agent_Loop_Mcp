@@ -1,5 +1,8 @@
 import { createState } from "../packages/agent/src/state.js";
 
+const boldGreen = (t: string) => `\x1b[1m\x1b[32m${t}\x1b[0m`;
+const boldRed = (t: string) => `\x1b[1m\x1b[31m${t}\x1b[0m`;
+
 function testStuckLoopDetection() {
     console.log("Running Stuck-Loop Detection Test...");
 
@@ -26,10 +29,10 @@ function testStuckLoopDetection() {
     }
 
     if (state.haltReason !== "stuck_loop") {
-        throw new Error("STUCK-LOOP TEST FAILED: Stuck loop was not detected after 3 consecutive identical calls!");
+        throw new Error(boldRed("STUCK-LOOP TEST FAILED: Stuck loop was not detected after 3 consecutive identical calls!"));
     }
 
-    console.log("STUCK-LOOP TEST PASSED: 3x consecutive call correctly triggered stuck_loop halt.");
+    console.log(boldGreen("STUCK-LOOP TEST PASSED: 3x consecutive call correctly triggered stuck_loop halt."));
 }
 
 testStuckLoopDetection();

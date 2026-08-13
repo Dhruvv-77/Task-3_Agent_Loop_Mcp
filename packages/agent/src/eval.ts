@@ -10,6 +10,21 @@ import {
     REPO_ROOT
 } from "./config.js";
 
+// ANSI Terminal Colors Utility
+const colors = {
+    bold: (t: string) => `\x1b[1m${t}\x1b[0m`,
+    green: (t: string) => `\x1b[32m${t}\x1b[0m`,
+    yellow: (t: string) => `\x1b[33m${t}\x1b[0m`,
+    blue: (t: string) => `\x1b[34m${t}\x1b[0m`,
+    cyan: (t: string) => `\x1b[36m${t}\x1b[0m`,
+    red: (t: string) => `\x1b[31m${t}\x1b[0m`,
+    gray: (t: string) => `\x1b[90m${t}\x1b[0m`,
+    boldGreen: (t: string) => `\x1b[1m\x1b[32m${t}\x1b[0m`,
+    boldRed: (t: string) => `\x1b[1m\x1b[31m${t}\x1b[0m`,
+    boldBlue: (t: string) => `\x1b[1m\x1b[34m${t}\x1b[0m`,
+    boldCyan: (t: string) => `\x1b[1m\x1b[36m${t}\x1b[0m`
+};
+
 export interface GoldenScenario {
     id: string;
     test: string;
@@ -17,9 +32,7 @@ export interface GoldenScenario {
     expectedOutcome: "passed" | "unfixable";
 }
 
-// 15 Golden Scenarios: 6 Easy, 6 Medium, 3 Hard
 const SCENARIOS: GoldenScenario[] = [
-    // Easy (6 cases)
     { id: "math-range", test: "math.range.test.ts", difficulty: "easy", expectedOutcome: "passed" },
     { id: "math-clamp", test: "math.clamp.test.ts", difficulty: "easy", expectedOutcome: "passed" },
     { id: "string-slug", test: "string.slug.test.ts", difficulty: "easy", expectedOutcome: "passed" },
@@ -27,7 +40,6 @@ const SCENARIOS: GoldenScenario[] = [
     { id: "validator-email", test: "validator.email.test.ts", difficulty: "easy", expectedOutcome: "passed" },
     { id: "validator-required", test: "validator.required.test.ts", difficulty: "easy", expectedOutcome: "passed" },
 
-    // Medium (6 cases)
     { id: "token-verify", test: "token.verify.test.ts", difficulty: "medium", expectedOutcome: "passed" },
     { id: "path-normalize", test: "path.normalize.test.ts", difficulty: "medium", expectedOutcome: "passed" },
     { id: "path-join", test: "path.join.test.ts", difficulty: "medium", expectedOutcome: "passed" },
@@ -35,7 +47,6 @@ const SCENARIOS: GoldenScenario[] = [
     { id: "auth-session", test: "auth.session.test.ts", difficulty: "medium", expectedOutcome: "passed" },
     { id: "auth-loop", test: "auth.loop.test.ts", difficulty: "medium", expectedOutcome: "passed" },
 
-    // Hard (3 cases)
     { id: "integration-redirect-session", test: "integration.redirect-session.test.ts", difficulty: "hard", expectedOutcome: "passed" },
     { id: "config-timeout", test: "config.timeout.test.ts", difficulty: "hard", expectedOutcome: "passed" },
     { id: "config-env", test: "config.env.test.ts", difficulty: "hard", expectedOutcome: "unfixable" }
@@ -203,7 +214,9 @@ async function main() {
     const results = [];
 
     for (const scenario of SCENARIOS) {
-        console.log(`Running ${scenario.test} (${scenario.difficulty})...`);
+        console.log(`\n${colors.boldCyan("----------------------------------------------------------------")}`);
+        console.log(`${colors.boldBlue("Running")} ${colors.bold(scenario.test)} ${colors.gray(`(${scenario.difficulty})`)}...`);
+        console.log(`${colors.boldCyan("----------------------------------------------------------------")}\n`);
         results.push(await evaluateOne(scenario));
     }
 
@@ -237,16 +250,19 @@ async function main() {
     await fs.mkdir(path.dirname(EVAL_REPORT), { recursive: true });
     await fs.writeFile(EVAL_REPORT, JSON.stringify(report, null, 2));
 
-    console.log("\n=== Evaluation Summary ===");
-    console.log(`Total Scenarios:     ${report.total}`);
-    console.log(`Solved / Correct:    ${report.solved}`);
-    console.log(`Success @ budget:    ${(report.successAtBudget * 100).toFixed(1)}%`);
-    console.log(`Mean steps:          ${report.meanStepsToSuccess.toFixed(2)}`);
-    console.log(`Wasted step ratio:   ${report.wastedStepRatio.toFixed(2)}`);
-    console.log(`Tool call error rate:${report.toolCallErrorRate.toFixed(2)}`);
-    console.log(`Guardrail violations:${report.guardrailViolations}`);
-    console.log(`P50 latency:         ${Math.round(report.p50LatencyMs)} ms`);
-    console.log(`P95 latency:         ${Math.round(report.p95LatencyMs)} ms`);
+    console.log(`\n${colors.boldCyan("================================================================")}`);
+    console.log(`${colors.boldCyan("                    EVALUATION SUMMARY                         ")}`);
+    console.log(`${colors.boldCyan("================================================================")}`);
+    console.log(`${colors.bold("Total Scenarios:")}      ${colors.cyan(String(report.total))}`);
+    console.log(`${colors.bold("Solved / Correct:")}     ${colors.boldGreen(String(report.solved))}`);
+    console.log(`${colors.bold("Success @ budget:")}     ${colors.boldGreen((report.successAtBudget * 100).toFixed(1) + "%")}`);
+    console.log(`${colors.bold("Mean steps:")}           ${colors.yellow(report.meanStepsToSuccess.toFixed(2))}`);
+    console.log(`${colors.bold("Wasted step ratio:")}    ${colors.yellow(report.wastedStepRatio.toFixed(2))}`);
+    console.log(`${colors.bold("Tool call error rate:")} ${colors.yellow(report.toolCallErrorRate.toFixed(2))}`);
+    console.log(`${colors.bold("Guardrail violations:")} ${report.guardrailViolations === 0 ? colors.green("0") : colors.boldRed(String(report.guardrailViolations))}`);
+    console.log(`${colors.bold("P50 latency:")}          ${colors.gray(`${Math.round(report.p50LatencyMs)} ms`)}`);
+    console.log(`${colors.bold("P95 latency:")}          ${colors.gray(`${Math.round(report.p95LatencyMs)} ms`)}`);
+    console.log(`${colors.boldCyan("================================================================")}`);
 }
 
 main().catch(err => {

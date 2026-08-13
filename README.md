@@ -1,6 +1,6 @@
 # agent-loop-mcp
 
-An autonomous single-tool-per-step code repair agent built with TypeScript, Vitest, MCP, and local Ollama (`qwen2.5:3b-instruct`).
+An autonomous single-tool-per-step code repair agent built with TypeScript, Vitest, MCP, and local Ollama (`qwen2.5:7b-instruct`).
 
 The agent executes a loop: it runs a failing test, queries the LLM for a tool action (`read_file`, `list_dir`, `grep`, `propose_edit`, `run_test`), validates path safety, requests human/eval approval for edits, applies safe edits to disk, and re-runs tests until passing or halted by budget/stuck-loop limits.
 
@@ -11,9 +11,9 @@ The agent executes a loop: it runs a failing test, queries the LLM for a tool ac
 ### 1. Prerequisites
 - Node.js 20+
 - pnpm 10+
-- Local Ollama running with `qwen2.5:3b-instruct`:
+- Local Ollama running with `qwen2.5:7b-instruct`:
   ```bash
-  ollama pull qwen2.5:3b-instruct
+  ollama pull qwen2.5:7b-instruct
   ```
 
 ### 2. Installation
@@ -25,7 +25,7 @@ pnpm install
 
 #### TypeScript Typecheck
 ```bash
-pnpm --filter @intern/agent exec tsc --noEmit
+pnpm exec tsc --noEmit
 ```
 
 #### Run Safety & Canary Test Suites
@@ -55,7 +55,7 @@ pnpm mcp
 
 ## Architecture & Safety Guardrails
 
-- **LLM Agent Loop**: Driven by `qwen2.5:3b-instruct` via Ollama at `http://127.0.0.1:11434`. Requests exactly one tool call per turn.
+- **LLM Agent Loop**: Driven by `qwen2.5:7b-instruct` (or `qwen2.5:3b-instruct` via `OLLAMA_MODEL` env var) via Ollama at `http://127.0.0.1:11434`. Requests exactly one tool call per turn.
 - **5 MCP Tools**: `read_file`, `list_dir`, `grep`, `propose_edit`, `run_test`.
 - **Path Safety**: `packages/agent/src/safety.ts` enforces strict boundary checks (blocks `../`, `node_modules`, `evals`).
 - **Non-LLM Approval Gate**: `packages/agent/src/approval.ts` validates paths and exact `before` snippet presence before prompting (`y/n`) or auto-approving (`AUTO_APPROVE=1`).

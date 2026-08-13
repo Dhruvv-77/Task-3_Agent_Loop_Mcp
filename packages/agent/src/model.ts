@@ -11,7 +11,7 @@ export interface ModelCallResult {
 }
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5:3b-instruct";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct";
 
 export async function queryModel(
     systemPrompt: string,
@@ -50,7 +50,6 @@ export async function queryModel(
     try {
         const parsed = JSON.parse(content);
 
-        // Check if response is a tool call object
         if (parsed && typeof parsed === "object" && typeof parsed.tool === "string") {
             const tool = parsed.tool;
             const validTools = ["read_file", "list_dir", "grep", "propose_edit", "run_test"];
@@ -73,7 +72,6 @@ export async function queryModel(
             };
         }
 
-        // If array returned (multiple tool calls requested)
         if (Array.isArray(parsed)) {
             return {
                 ok: false,

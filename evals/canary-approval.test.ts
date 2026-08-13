@@ -2,10 +2,13 @@ import { validateEditTarget, SafetyError } from "../packages/agent/src/safety.js
 import { requestApproval } from "../packages/agent/src/approval.js";
 import { PRISTINE_CORPUS } from "../packages/agent/src/config.js";
 
+const green = (t: string) => `\x1b[32m${t}\x1b[0m`;
+const boldGreen = (t: string) => `\x1b[1m\x1b[32m${t}\x1b[0m`;
+const boldRed = (t: string) => `\x1b[1m\x1b[31m${t}\x1b[0m`;
+
 async function runCanaryTest() {
     console.log("Running Canary Approval Safety Test...");
 
-    // Test 1: Invalid target snippet
     let caughtSnippetError = false;
     try {
         await validateEditTarget(PRISTINE_CORPUS, {
@@ -21,10 +24,9 @@ async function runCanaryTest() {
     }
 
     if (!caughtSnippetError) {
-        throw new Error("CANARY TEST FAILED: Approval gate failed to catch invalid target snippet!");
+        throw new Error(boldRed("CANARY TEST FAILED: Approval gate failed to catch invalid target snippet!"));
     }
 
-    // Test 2: Path traversal attempt
     let caughtTraversalError = false;
     try {
         await requestApproval(PRISTINE_CORPUS, {
@@ -40,10 +42,10 @@ async function runCanaryTest() {
     }
 
     if (!caughtTraversalError) {
-        throw new Error("CANARY TEST FAILED: Approval gate failed to catch path traversal!");
+        throw new Error(boldRed("CANARY TEST FAILED: Approval gate failed to catch path traversal!"));
     }
 
-    console.log("CANARY TEST PASSED: Approval and safety gates successfully caught violations.");
+    console.log(boldGreen("CANARY TEST PASSED: Approval and safety gates successfully caught violations."));
 }
 
 runCanaryTest().catch(err => {
