@@ -20,7 +20,7 @@ export interface ModelCallResult {
     rawResponse?: string;
 }
 
-const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 export async function queryModel(
     systemPrompt: string,
