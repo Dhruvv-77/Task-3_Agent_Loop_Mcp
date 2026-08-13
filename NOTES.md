@@ -6,9 +6,8 @@ The Model Context Protocol (MCP) provides a standardized, schema-driven tool int
 ## 2. Stuck-Loop Detector Findings
 In early evaluation runs with small local models like `qwen2.5:3b-instruct`, models occasionally enter repetitive loops (e.g. repeatedly calling `read_file` on the same file when uncertain how to proceed). The 3-consecutive-identical-call detector (`sameCallCount >= 3`) catches this behavior early, triggering a clean `stuck_loop` halt at step 3 instead of wasting the full 12-step budget.
 
-## 3. Ollama `qwen2.5:3b-instruct` Reliability
-- **Tool Calling**: `qwen2.5:3b-instruct` performs well when system prompts strictly enforce single tool call JSON output formatting. Setting `format: "json"` in the Ollama `/api/chat` payload reduces malformed outputs.
-- **Context Handling**: The model respects transcript history when prior tool results (file contents and test failure logs) are appended as `user` observations.
+## 3. Groq API `llama-3.3-70b-versatile` Reliability
+- **Tool Calling**: The Groq API performs well when system prompts strictly enforce single tool call JSON output formatting. Enabling JSON Mode (`response_format: { type: "json_object" }`) ensures valid JSON structure.
 
 ## 4. Safety Guardrails & Canary Tests
 The approval gate in `approval.ts` relies on `safety.ts` to enforce non-LLM safety checks before prompting or auto-approving:

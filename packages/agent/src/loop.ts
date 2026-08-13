@@ -14,6 +14,27 @@ import { createState, markFileRead, type AgentState } from "./state.js";
 import { log, clearLog, setTrajectoryFile } from "./trajectory.js";
 import { BROKEN_CORPUS, MAX_STEPS, WALL_CLOCK_MS } from "./config.js";
 
+const ESC = "\u001b";
+const RESET = `${ESC}[0m`;
+const BOLD = `${ESC}[1m`;
+const DIM = `${ESC}[2m`;
+const ITALIC = `${ESC}[3m`;
+
+const RED = `${ESC}[31m`;
+const GREEN = `${ESC}[32m`;
+const YELLOW = `${ESC}[33m`;
+const BLUE = `${ESC}[34m`;
+const MAGENTA = `${ESC}[35m`;
+const CYAN = `${ESC}[36m`;
+const WHITE = `${ESC}[37m`;
+
+const BRIGHT_RED = `${ESC}[91m`;
+const BRIGHT_GREEN = `${ESC}[92m`;
+const BRIGHT_YELLOW = `${ESC}[93m`;
+const BRIGHT_BLUE = `${ESC}[94m`;
+const BRIGHT_MAGENTA = `${ESC}[95m`;
+const BRIGHT_CYAN = `${ESC}[96m`;
+
 const SYSTEM_PROMPT = `You are an autonomous code repair agent. A test suite is failing.
 Your job is to investigate using tools, identify the bug in source code, propose an edit, and re-run tests.
 
@@ -44,7 +65,10 @@ export async function runLoop(test: string): Promise<AgentState> {
     setTrajectoryFile(test);
     await clearLog();
 
-    console.log("=== AGENT LOOP START ===");
+    console.log(`\n${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════════════╗${RESET}`);
+    console.log(`${BOLD}${CYAN}║                    🤖 MCP AUTONOMOUS REPAIR AGENT                    ║${RESET}`);
+    console.log(`${BOLD}${CYAN}╚══════════════════════════════════════════════════════════════════════╝${RESET}`);
+    console.log(`${BOLD}${WHITE}Target Test:${RESET} ${YELLOW}${test}${RESET}\n`);
 
     // Run initial test
     const initialResult = runTest(test);
@@ -60,8 +84,10 @@ export async function runLoop(test: string): Promise<AgentState> {
     if (initialResult.success) {
         state.solved = true;
         state.haltReason = "test_passed";
-        console.log("Test already passing.");
-        console.log("\n=== AGENT LOOP END ===");
+        console.log(`${BOLD}${GREEN}✔ Test already passing!${RESET}`);
+        console.log(`\n${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════════════╗${RESET}`);
+        console.log(`${BOLD}${GREEN}║ 🎉 SUCCESS: The test suite passed successfully!                      ║${RESET}`);
+        console.log(`${BOLD}${CYAN}╚══════════════════════════════════════════════════════════════════════╝${RESET}\n`);
         return state;
     }
 
@@ -71,7 +97,7 @@ export async function runLoop(test: string): Promise<AgentState> {
     });
 
     for (state.step = 1; state.step <= MAX_STEPS; state.step++) {
-        console.log(`\nStep ${state.step}`);
+        console.log(`\n${BOLD}${MAGENTA}┌─── Step ${state.step} ───────────────────────────────────────────────────────────┐${RESET}`);
 
         // 1. Check Wall-Clock Budget
         if (Date.now() - state.startedAt >= WALL_CLOCK_MS) {
@@ -81,7 +107,8 @@ export async function runLoop(test: string): Promise<AgentState> {
                 action: "wall_clock_exhausted",
                 elapsedMs: Date.now() - state.startedAt
             });
-            console.log("\nWall clock budget exhausted.");
+            console.log(`│ ${BOLD}${RED}✘ Wall clock budget exhausted.${RESET}`);
+            console.log(`${BOLD}${MAGENTA}└──────────────────────────────────────────────────────────────────────┘${RESET}`);
             break;
         }
 
@@ -90,13 +117,14 @@ export async function runLoop(test: string): Promise<AgentState> {
         try {
             modelRes = await queryModel(SYSTEM_PROMPT, state.transcript);
         } catch (err: any) {
-            state.haltReason = "ollama_error";
+            state.haltReason = "api_error";
             await log({
                 step: state.step,
-                action: "ollama_error",
+                action: "api_error",
                 error: err.message
             });
-            console.error(`\nOllama error: ${err.message}`);
+            console.error(`│ ${BOLD}${RED}✘ API error: ${err.message}${RESET}`);
+            console.log(`${BOLD}${MAGENTA}└──────────────────────────────────────────────────────────────────────┘${RESET}`);
             break;
         }
 
@@ -107,6 +135,9 @@ export async function runLoop(test: string): Promise<AgentState> {
                 error: modelRes.error || "Malformed tool call",
                 rawResponse: modelRes.rawResponse
             });
+
+            console.error(`│ ${BOLD}${YELLOW}⚠ Tool call error: ${modelRes.error || "Malformed tool call"}${RESET}`);
+            console.log(`${BOLD}${MAGENTA}└──────────────────────────────────────────────────────────────────────┘${RESET}`);
 
             state.transcript.push({
                 role: "user",
@@ -133,12 +164,24 @@ export async function runLoop(test: string): Promise<AgentState> {
                 action: "stuck_loop",
                 toolCall
             });
-            console.log(`\nStuck loop detected (3x consecutive call: ${signature}). Halting.`);
+            console.log(`│ ${BOLD}${RED}✘ Stuck loop detected (3x consecutive identical calls). Halting.${RESET}`);
+            console.log(`${BOLD}${MAGENTA}└──────────────────────────────────────────────────────────────────────┘${RESET}`);
             break;
         }
 
         // 4. Execute Selected Tool
-        console.log(`Model requested tool: ${toolCall.tool}`);
+        console.log(`│ ${BOLD}${BLUE}🤖 Model Action:${RESET} ${WHITE}${toolCall.tool}${RESET}`);
+        if (toolCall.tool === "read_file") {
+            console.log(`│   ${DIM}Reading path:${RESET} ${toolCall.arguments.path}`);
+        } else if (toolCall.tool === "grep") {
+            console.log(`│   ${DIM}Searching for:${RESET} "${toolCall.arguments.pattern}"`);
+        } else if (toolCall.tool === "propose_edit") {
+            console.log(`│   ${DIM}Editing file:${RESET} ${toolCall.arguments.file}`);
+            console.log(`│   ${DIM}Reason:${RESET} ${ITALIC}${toolCall.arguments.reason}${RESET}`);
+        } else if (toolCall.tool === "run_test") {
+            console.log(`│   ${DIM}Running test:${RESET} ${toolCall.arguments.testFile || test}`);
+        }
+        console.log(`${BOLD}${MAGENTA}└──────────────────────────────────────────────────────────────────────┘${RESET}`);
 
         try {
             switch (toolCall.tool) {
@@ -298,8 +341,9 @@ export async function runLoop(test: string): Promise<AgentState> {
                             role: "user",
                             content: `Test execution output:\nPASS ${testFile}`
                         });
-                        console.log("\nTest passed.");
+                        console.log(`\n${BOLD}${GREEN}✔ Test passed!${RESET}`);
                     } else {
+                        console.log(`\n${BOLD}${RED}✘ Test failed!${RESET}`);
                         state.transcript.push({
                             role: "user",
                             content: `Test execution output:\n${testRes.output}`
@@ -316,7 +360,7 @@ export async function runLoop(test: string): Promise<AgentState> {
                     action: "approval_gate_violation",
                     error: err.message
                 });
-                console.error(`\nSafety Gate Violation: ${err.message}`);
+                console.error(`\n${BOLD}${RED}✘ Safety Gate Violation: ${err.message}${RESET}`);
                 break;
             } else if (err instanceof FileNotFoundError || err instanceof SnippetNotFoundError) {
                 await log({
@@ -356,9 +400,18 @@ export async function runLoop(test: string): Promise<AgentState> {
             step: state.step,
             action: "step_budget_exhausted"
         });
-        console.log("\nStep budget exhausted.");
+        console.log(`\n${BOLD}${RED}✘ Step budget exhausted.${RESET}`);
     }
 
-    console.log(`\n=== AGENT LOOP END (Halt reason: ${state.haltReason}) ===`);
+    console.log(`\n${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════════════╗${RESET}`);
+    if (state.haltReason === "test_passed") {
+        console.log(`${BOLD}${GREEN}║ 🎉 SUCCESS: The test suite passed successfully!                      ║${RESET}`);
+    } else if (state.haltReason === "unfixable_reported") {
+        console.log(`${BOLD}${YELLOW}║ ⚠️ UNFIXABLE: The agent identified the issue as outside tool surface. ║${RESET}`);
+    } else {
+        console.log(`${BOLD}${RED}║ ❌ HALTED: Reason: ${state.haltReason.toUpperCase().padEnd(50)} ║${RESET}`);
+    }
+    console.log(`${BOLD}${CYAN}╚══════════════════════════════════════════════════════════════════════╝${RESET}\n`);
+
     return state;
 }

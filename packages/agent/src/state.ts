@@ -4,7 +4,7 @@ export type HaltReason =
     | "wall_clock_exhausted"
     | "stuck_loop"
     | "approval_gate_violation"
-    | "ollama_error"
+    | "api_error"
     | "unfixable_reported";
 
 export interface AgentState {

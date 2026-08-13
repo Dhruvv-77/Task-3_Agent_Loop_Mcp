@@ -6,8 +6,8 @@
 
 ```text
                   +--------------------------------+
-                  |         Ollama LLM             |
-                  |     qwen2.5:3b-instruct        |
+                  |           Groq API             |
+                  |   llama-3.3-70b-versatile      |
                   +---------------+----------------+
                                   |
                         Single Tool Call (JSON)
@@ -39,7 +39,7 @@
 ## Component Interfaces & Contracts
 
 ### 1. Model Client (`packages/agent/src/model.ts`)
-- Communicates with local Ollama (`http://127.0.0.1:11434`, `qwen2.5:3b-instruct`).
+- Communicates with the Groq API (defaulting to `llama-3.3-70b-versatile`).
 - Requests exactly **one** JSON tool call per model turn.
 - Validates returned tool name and arguments.
 

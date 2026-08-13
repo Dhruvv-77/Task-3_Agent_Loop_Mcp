@@ -1,6 +1,6 @@
 # agent-loop-mcp
 
-An autonomous single-tool-per-step code repair agent built with TypeScript, Vitest, MCP, and local Ollama (`qwen2.5:3b-instruct`).
+An autonomous single-tool-per-step code repair agent built with TypeScript, Vitest, MCP, and the Groq API (defaulting to `llama-3.3-70b-versatile`).
 
 The agent executes a loop: it runs a failing test, queries the LLM for a tool action (`read_file`, `list_dir`, `grep`, `propose_edit`, `run_test`), validates path safety, requests human/eval approval for edits, applies safe edits to disk, and re-runs tests until passing or halted by budget/stuck-loop limits.
 
@@ -11,9 +11,9 @@ The agent executes a loop: it runs a failing test, queries the LLM for a tool ac
 ### 1. Prerequisites
 - Node.js 20+
 - pnpm 10+
-- Local Ollama running with `qwen2.5:3b-instruct`:
-  ```bash
-  ollama pull qwen2.5:3b-instruct
+- A Groq API key configured in a `.env` file at the repository root:
+  ```env
+  GROQ_API_KEY="your_api_key_here"
   ```
 
 ### 2. Installation
@@ -55,12 +55,12 @@ pnpm mcp
 
 ## Architecture & Safety Guardrails
 
-- **LLM Agent Loop**: Driven by `qwen2.5:3b-instruct` via Ollama at `http://127.0.0.1:11434`. Requests exactly one tool call per turn.
+- **LLM Agent Loop**: Driven by the Groq API (defaulting to `llama-3.3-70b-versatile`). Requests exactly one tool call per turn.
 - **5 MCP Tools**: `read_file`, `list_dir`, `grep`, `propose_edit`, `run_test`.
 - **Path Safety**: `packages/agent/src/safety.ts` enforces strict boundary checks (blocks `../`, `node_modules`, `evals`).
 - **Non-LLM Approval Gate**: `packages/agent/src/approval.ts` validates paths and exact `before` snippet presence before prompting (`y/n`) or auto-approving (`AUTO_APPROVE=1`).
 - **Stuck-Loop Detection**: Halts execution if 3 consecutive identical tool calls + arguments are detected.
-- **Explicit Halting Reasons**: `test_passed`, `step_budget_exhausted`, `wall_clock_exhausted`, `stuck_loop`, `approval_gate_violation`, `unfixable_reported`, `ollama_error`.
+- **Explicit Halting Reasons**: `test_passed`, `step_budget_exhausted`, `wall_clock_exhausted`, `stuck_loop`, `approval_gate_violation`, `unfixable_reported`, `api_error`.
 
 ---
 

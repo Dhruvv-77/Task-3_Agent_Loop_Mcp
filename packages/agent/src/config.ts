@@ -1,11 +1,14 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // packages/agent/src -> packages/agent -> packages -> repo root
 export const REPO_ROOT = path.resolve(__dirname, "../../..");
+
+dotenv.config({ path: path.join(REPO_ROOT, ".env") });
 
 // Corpus directories
 export const CORPUS_ROOT = path.join(REPO_ROOT, "corpus");
