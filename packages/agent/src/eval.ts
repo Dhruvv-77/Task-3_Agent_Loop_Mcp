@@ -10,22 +10,35 @@ import {
     REPO_ROOT
 } from "./config.js";
 
-const TESTS = [
-    "math.range.test.ts",
-    "string.slug.test.ts",
-    "validator.email.test.ts",
-    "auth.redirect.test.ts",
-    "auth.session.test.ts",
-    "token.verify.test.ts",
-    "path.normalize.test.ts",
-    "config.env.test.ts",
-    "auth.loop.test.ts",
-    "integration.redirect-session.test.ts",
-    "math.clamp.test.ts",
-    "string.truncate.test.ts",
-    "validator.required.test.ts",
-    "config.timeout.test.ts",
-    "path.join.test.ts"
+export interface GoldenScenario {
+    id: string;
+    test: string;
+    difficulty: "easy" | "medium" | "hard";
+    expectedOutcome: "passed" | "unfixable";
+}
+
+// 15 Golden Scenarios: 6 Easy, 6 Medium, 3 Hard
+const SCENARIOS: GoldenScenario[] = [
+    // Easy (6 cases)
+    { id: "math-range", test: "math.range.test.ts", difficulty: "easy", expectedOutcome: "passed" },
+    { id: "math-clamp", test: "math.clamp.test.ts", difficulty: "easy", expectedOutcome: "passed" },
+    { id: "string-slug", test: "string.slug.test.ts", difficulty: "easy", expectedOutcome: "passed" },
+    { id: "string-truncate", test: "string.truncate.test.ts", difficulty: "easy", expectedOutcome: "passed" },
+    { id: "validator-email", test: "validator.email.test.ts", difficulty: "easy", expectedOutcome: "passed" },
+    { id: "validator-required", test: "validator.required.test.ts", difficulty: "easy", expectedOutcome: "passed" },
+
+    // Medium (6 cases)
+    { id: "token-verify", test: "token.verify.test.ts", difficulty: "medium", expectedOutcome: "passed" },
+    { id: "path-normalize", test: "path.normalize.test.ts", difficulty: "medium", expectedOutcome: "passed" },
+    { id: "path-join", test: "path.join.test.ts", difficulty: "medium", expectedOutcome: "passed" },
+    { id: "auth-redirect", test: "auth.redirect.test.ts", difficulty: "medium", expectedOutcome: "passed" },
+    { id: "auth-session", test: "auth.session.test.ts", difficulty: "medium", expectedOutcome: "passed" },
+    { id: "auth-loop", test: "auth.loop.test.ts", difficulty: "medium", expectedOutcome: "passed" },
+
+    // Hard (3 cases)
+    { id: "integration-redirect-session", test: "integration.redirect-session.test.ts", difficulty: "hard", expectedOutcome: "passed" },
+    { id: "config-timeout", test: "config.timeout.test.ts", difficulty: "hard", expectedOutcome: "passed" },
+    { id: "config-env", test: "config.env.test.ts", difficulty: "hard", expectedOutcome: "unfixable" }
 ];
 
 async function sleep(ms: number) {
@@ -33,14 +46,9 @@ async function sleep(ms: number) {
 }
 
 async function resetCorpus() {
-    // On Windows, vitest may hold file handles briefly after exit.
-    // Retry the rm up to 10 times with a 500ms delay on EBUSY.
     for (let attempt = 1; attempt <= 10; attempt++) {
         try {
-            await fs.rm(BROKEN_CORPUS, {
-                recursive: true,
-                force: true
-            });
+            await fs.rm(BROKEN_CORPUS, { recursive: true, force: true });
             break;
         } catch (err: any) {
             if ((err.code === "EBUSY" || err.code === "EPERM") && attempt < 10) {
@@ -54,33 +62,18 @@ async function resetCorpus() {
     await fs.cp(PRISTINE_CORPUS, BROKEN_CORPUS, {
         recursive: true,
         verbatimSymlinks: false,
-        filter: (src) => {
-            const name = path.basename(src);
-            return name !== "node_modules";
-        }
+        filter: (src) => path.basename(src) !== "node_modules"
     });
 
-    execSync("pnpm install", {
-        cwd: REPO_ROOT,
-        stdio: "ignore"
-    });
+    execSync("pnpm install", { cwd: REPO_ROOT, stdio: "ignore" });
 }
 
-
 async function readTrajectory(test: string) {
-    const file = path.join(
-        TRAJECTORY_DIR,
-        `${test}.jsonl`
-    );
-
+    const file = path.join(TRAJECTORY_DIR, `${test}.jsonl`);
 
     try {
         const text = await fs.readFile(file, "utf8");
-
-        const lines = text
-            .trim()
-            .split("\n")
-            .filter(Boolean);
+        const lines = text.trim().split("\n").filter(Boolean);
 
         let steps = 0;
         let toolCalls = 0;
@@ -91,42 +84,42 @@ async function readTrajectory(test: string) {
         let guardrailViolations = 0;
 
         const seenActions = new Set<string>();
+        const seenFiles = new Set<string>();
 
         for (const line of lines) {
             const event = JSON.parse(line);
 
-            steps++;
+            if (event.step > 0) {
+                steps = Math.max(steps, event.step);
+            }
 
             if (
-                event.action === "write_file" ||
-                event.action === "run_test" ||
-                event.action === "propose_edit"
+                event.action === "read_file" ||
+                event.action === "list_dir" ||
+                event.action === "grep" ||
+                event.action === "propose_edit" ||
+                event.action === "run_test"
             ) {
                 toolCalls++;
             }
 
             if (event.action === "read_file") {
-                filesRead++;
+                if (seenFiles.has(event.file)) {
+                    wastedSteps++;
+                } else {
+                    seenFiles.add(event.file);
+                    filesRead++;
+                }
             }
 
-            if (event.action === "approval_rejected") {
-                approvalRejections++;
-            }
+            if (event.action === "approval_rejected") approvalRejections++;
+            if (event.action === "approval_gate_violation") guardrailViolations++;
+            if (event.action === "tool_call_error") toolCallErrors++;
 
-            if (event.action === "approval_gate_violation") {
-                guardrailViolations++;
-            }
-
-            if (event.action === "tool_call_error") {
-                toolCallErrors++;
-            }
-
-            const signature = `${event.action}:${JSON.stringify(event.output ?? "")} `;
-
-            if (seenActions.has(signature)) {
+            const signature = `${event.action}:${JSON.stringify(event.file || event.path || event.pattern || "")}`;
+            if (seenActions.has(signature) && event.action !== "run_test") {
                 wastedSteps++;
             }
-
             seenActions.add(signature);
         }
 
@@ -150,51 +143,42 @@ async function readTrajectory(test: string) {
             guardrailViolations: 0
         };
     }
-
-
 }
 
-async function evaluateOne(test: string) {
+async function evaluateOne(scenario: GoldenScenario) {
     await resetCorpus();
 
-
-    const trajectoryFile = path.join(
-        TRAJECTORY_DIR,
-        `${test}.jsonl`
-    );
-
-    await fs.rm(trajectoryFile, {
-        force: true
-    });
+    const trajectoryFile = path.join(TRAJECTORY_DIR, `${scenario.test}.jsonl`);
+    await fs.rm(trajectoryFile, { force: true });
 
     const start = Date.now();
-
-    await runLoop(test);
-
+    const finalState = await runLoop(scenario.test);
     const durationMs = Date.now() - start;
 
     let passed = false;
-
-    try {
-        execSync(
-            `pnpm exec vitest run tests/${test}`,
-            {
+    if (scenario.expectedOutcome === "unfixable") {
+        passed = finalState.haltReason === "unfixable_reported";
+    } else {
+        try {
+            execSync(`pnpm exec vitest run tests/${scenario.test}`, {
                 cwd: BROKEN_CORPUS,
                 stdio: "ignore"
-            }
-        );
-
-        passed = true;
-    } catch {
-        passed = false;
+            });
+            passed = true;
+        } catch {
+            passed = false;
+        }
     }
 
-    const metrics = await readTrajectory(test);
+    const metrics = await readTrajectory(scenario.test);
 
     return {
-        id: test.replace(".test.ts", ""),
-        test,
+        id: scenario.id,
+        test: scenario.test,
+        difficulty: scenario.difficulty,
+        expectedOutcome: scenario.expectedOutcome,
         passed,
+        haltReason: finalState.haltReason,
         durationMs,
         steps: metrics.steps,
         toolCalls: metrics.toolCalls,
@@ -202,58 +186,33 @@ async function evaluateOne(test: string) {
         approvalRejections: metrics.approvalRejections,
         wastedSteps: metrics.wastedSteps,
         toolCallErrors: metrics.toolCallErrors,
-        guardrailViolations:
-            metrics.guardrailViolations
+        guardrailViolations: metrics.guardrailViolations
     };
-
-
 }
 
 function percentile(values: number[], p: number) {
     if (values.length === 0) return 0;
-
-
-    const sorted = [...values].sort(
-        (a, b) => a - b
-    );
-
-    const index = Math.floor(
-        (p / 100) * (sorted.length - 1)
-    );
-
+    const sorted = [...values].sort((a, b) => a - b);
+    const index = Math.floor((p / 100) * (sorted.length - 1));
     return sorted[index];
-
-
 }
 
 async function main() {
-    // Enable non-interactive approval for the evaluation harness.
-    // pnpm agent fix --test ... does NOT set this, so it stays interactive.
     process.env.AUTO_APPROVE = "1";
 
     const results = [];
 
-    for (const test of TESTS) {
-        console.log(`Running ${test}...`);
-        results.push(await evaluateOne(test));
+    for (const scenario of SCENARIOS) {
+        console.log(`Running ${scenario.test} (${scenario.difficulty})...`);
+        results.push(await evaluateOne(scenario));
     }
 
-    // Clean up so the env var does not persist if this module is re-imported.
     delete process.env.AUTO_APPROVE;
 
     const total = results.length;
-
-    const solved = results.filter(
-        r => r.passed
-    ).length;
-
-    const successful = results.filter(
-        r => r.passed
-    );
-
-    const durations = results.map(
-        r => r.durationMs
-    );
+    const solved = results.filter(r => r.passed).length;
+    const successful = results.filter(r => r.passed);
+    const durations = results.map(r => r.durationMs);
 
     const report = {
         total,
@@ -262,80 +221,32 @@ async function main() {
         meanStepsToSuccess:
             successful.length === 0
                 ? 0
-                : successful.reduce(
-                    (s, r) => s + r.steps,
-                    0
-                ) / successful.length,
+                : successful.reduce((s, r) => s + r.steps, 0) / successful.length,
         wastedStepRatio:
-            results.reduce(
-                (s, r) => s + r.wastedSteps,
-                0
-            ) /
-            Math.max(
-                1,
-                results.reduce(
-                    (s, r) => s + r.steps,
-                    0
-                )
-            ),
+            results.reduce((s, r) => s + r.wastedSteps, 0) /
+            Math.max(1, results.reduce((s, r) => s + r.steps, 0)),
         toolCallErrorRate:
-            results.reduce(
-                (s, r) => s + r.toolCallErrors,
-                0
-            ) /
-            Math.max(
-                1,
-                results.reduce(
-                    (s, r) => s + r.toolCalls,
-                    0
-                )
-            ),
-        guardrailViolations:
-            results.reduce(
-                (s, r) =>
-                    s + r.guardrailViolations,
-                0
-            ),
+            results.reduce((s, r) => s + r.toolCallErrors, 0) /
+            Math.max(1, results.reduce((s, r) => s + r.toolCalls, 0)),
+        guardrailViolations: results.reduce((s, r) => s + r.guardrailViolations, 0),
         p50LatencyMs: percentile(durations, 50),
         p95LatencyMs: percentile(durations, 95),
-        results
+        scenarios: results
     };
 
-    await fs.mkdir(path.dirname(EVAL_REPORT), {
-        recursive: true
-    });
-
-    await fs.writeFile(
-        EVAL_REPORT,
-        JSON.stringify(report, null, 2)
-    );
+    await fs.mkdir(path.dirname(EVAL_REPORT), { recursive: true });
+    await fs.writeFile(EVAL_REPORT, JSON.stringify(report, null, 2));
 
     console.log("\n=== Evaluation Summary ===");
-    console.log(`Total: ${report.total} `);
-    console.log(`Solved: ${report.solved} `);
-    console.log(
-        `Success @budget: ${(report.successAtBudget * 100).toFixed(1)}% `
-    );
-    console.log(
-        `Mean steps: ${report.meanStepsToSuccess.toFixed(2)} `
-    );
-    console.log(
-        `Wasted - step ratio: ${report.wastedStepRatio.toFixed(2)} `
-    );
-    console.log(
-        `Tool - call error rate: ${report.toolCallErrorRate.toFixed(2)} `
-    );
-    console.log(
-        `Guardrail violations: ${report.guardrailViolations} `
-    );
-    console.log(
-        `P50 latency: ${Math.round(report.p50LatencyMs)} ms`
-    );
-    console.log(
-        `P95 latency: ${Math.round(report.p95LatencyMs)} ms`
-    );
-
-
+    console.log(`Total Scenarios:     ${report.total}`);
+    console.log(`Solved / Correct:    ${report.solved}`);
+    console.log(`Success @ budget:    ${(report.successAtBudget * 100).toFixed(1)}%`);
+    console.log(`Mean steps:          ${report.meanStepsToSuccess.toFixed(2)}`);
+    console.log(`Wasted step ratio:   ${report.wastedStepRatio.toFixed(2)}`);
+    console.log(`Tool call error rate:${report.toolCallErrorRate.toFixed(2)}`);
+    console.log(`Guardrail violations:${report.guardrailViolations}`);
+    console.log(`P50 latency:         ${Math.round(report.p50LatencyMs)} ms`);
+    console.log(`P95 latency:         ${Math.round(report.p95LatencyMs)} ms`);
 }
 
 main().catch(err => {

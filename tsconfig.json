@@ -11,5 +11,14 @@
         "types": [
             "node"
         ]
-    }
+    },
+    "include": [
+        "packages/agent/src/**/*.ts",
+        "evals/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "corpus"
+    ]
 }

@@ -1,221 +1,76 @@
-# DESIGN
+# DESIGN — agent-loop-mcp
 
-## Overview
+## Architecture Overview
 
-This project implements a lightweight MCP-style autonomous code repair agent that can diagnose failing tests, inspect source files, propose a minimal patch, request human approval, apply the patch safely, and rerun the test until it passes or the step budget is exhausted.
-
-The implementation is intentionally compact and deterministic so the behavior is reproducible across benchmark runs.
-
-## Architecture
+`agent-loop-mcp` is a lightweight, single-tool-per-turn autonomous code repair agent. The architecture decouples model decision-making from tool execution and safety enforcement.
 
 ```text
-                +----------------------+
-                |      CLI             |
-                | pnpm agent fix ...   |
-                +----------+-----------+
-                           |
-                           v
-                +----------------------+
-                |      Agent Loop      |
-                | runLoop(test)        |
-                +----------+-----------+
-                           |
-        +------------------+------------------+
-        |                  |                  |
-        v                  v                  v
-+---------------+  +----------------+  +------------------+
-| Test Runner   |  | Planner         |  | Approval Gate    |
-| Vitest        |  | proposeFix()    |  | requestApproval()|
-+-------+-------+  +--------+--------+  +---------+--------+
-        |                   |                     |
-        |                   v                     |
-        |         +----------------+              |
-        |         | File Tools      |<-------------+
-        |         | read / write    |
-        |         +--------+--------+
-        |                  |
-        +------------------+
-                           |
-                           v
-                +----------------------+
-                | Trajectory Logger    |
-                | JSONL event log      |
-                +----------------------+
+                  +--------------------------------+
+                  |         Ollama LLM             |
+                  |     qwen2.5:3b-instruct        |
+                  +---------------+----------------+
+                                  |
+                        Single Tool Call (JSON)
+                                  v
+                  +---------------+----------------+
+                  |         Agent Loop             |
+                  |   Budget & Stuck-Loop Check    |
+                  +---------------+----------------+
+                                  |
+          +-----------------------+-----------------------+
+          |                       |                       |
+          v                       v                       v
++------------------+    +-------------------+    +------------------+
+|    MCP Server    |    |   Safety Gate     |    |   Approval Gate  |
+|  5 Core Tools    |    |   (safety.ts)     |    |   (approval.ts)  |
++------------------+    +-------------------+    +------------------+
+          |                       |                       |
+          +-----------------------+-----------------------+
+                                  |
+                           Tool Execution
+                                  v
+                  +---------------+----------------+
+                  |    JSONL Trajectory Logger     |
+                  +--------------------------------+
 ```
 
-## Components
+---
 
-### CLI
+## Component Interfaces & Contracts
 
-Entry point:
+### 1. Model Client (`packages/agent/src/model.ts`)
+- Communicates with local Ollama (`http://127.0.0.1:11434`, `qwen2.5:3b-instruct`).
+- Requests exactly **one** JSON tool call per model turn.
+- Validates returned tool name and arguments.
 
-```
-packages/agent/src/cli.ts
-```
+### 2. MCP Server & Tool Surface (`packages/agent/src/mcp/server.ts`)
+Exposes 5 core tools over stdio JSON-RPC:
+- `read_file({ path: string })`: Reads file contents inside corpus root.
+- `list_dir({ path: string })`: Lists directory contents skipping `node_modules`.
+- `grep({ pattern: string })`: Searches pattern inside corpus root skipping `node_modules`.
+- `propose_edit({ file, before, after, reason })`: Validates edit snippet and creates diff preview. **Does NOT modify files directly.**
+- `run_test({ testFile: string })`: Executes Vitest test suite in corpus.
 
-Parses:
+### 3. Central Safety & Path Protection (`packages/agent/src/safety.ts`)
+- `safePath(rootDir, relativePath)`: Ensures target path remains strictly inside the benchmark corpus root. Rejects path traversal (`../`, `../../`), `node_modules`, and `evals`.
+- `validateEditTarget(rootDir, patch)`: Ensures target file exists and contains the exact `before` snippet. Throws `SafetyError` on failure.
 
-```
-pnpm agent fix --test math.range.test.ts
-```
+### 4. Non-LLM Approval & Edit Application (`packages/agent/src/approval.ts` & `applyEdit.ts`)
+- Safety check executes **before** any approval prompt or auto-approval (`AUTO_APPROVE=1`).
+- `applyEdit(patch)` performs the actual disk replacement after safety & approval validation pass.
 
-and invokes:
+### 5. Loop, State & Halting Logic (`packages/agent/src/loop.ts`)
+Monitors agent iterations and enforces explicit halting conditions:
+- `test_passed`: Target test execution succeeds.
+- `step_budget_exhausted`: Step count exceeds `MAX_STEPS` (12).
+- `wall_clock_exhausted`: Duration exceeds `WALL_CLOCK_MS` (30,000 ms).
+- `stuck_loop`: Model issues identical tool call + arguments 3 times consecutively.
+- `approval_gate_violation`: Safety gate detects invalid path or missing target snippet.
+- `unfixable_reported`: Model identifies environment problem outside tool surface.
 
-```
-runLoop(testName)
-```
+---
 
-### Agent loop
-
-Core implementation:
-
-```
-packages/agent/src/loop.ts
-```
-
-Workflow:
-
-1. Run the requested test
-2. Parse the failure output
-3. Read the failing test file
-4. Read the relevant source file
-5. Ask the planner for a patch
-6. Request approval
-7. Validate the edit
-8. Apply the patch
-9. Rerun the test
-10. Repeat until success or `MAX_STEPS`
-
-### Planner
-
-File:
-
-```
-packages/agent/src/planner.ts
-```
-
-The planner is deterministic and benchmark-oriented. It maps known benchmark tests to minimal source-level edits.
-
-Example:
-
-```ts
-{
-  file: "src/math.ts",
-  before: "for (let i = start; i < end; i++) {",
-  after: "for (let i = start; i <= end; i++) {",
-  reason: "Range should be inclusive."
-}
-```
-
-### Approval gate
-
-File:
-
-```
-packages/agent/src/approval.ts
-```
-
-Before any write occurs:
-
-* path traversal is rejected
-* edits outside the project root are rejected
-* the expected `before` text must exist
-* invalid patches throw an approval violation
-
-This prevents accidental or malicious modifications.
-
-### File tools
-
-Files:
-
-```
-packages/agent/src/tools/readFile.ts
-packages/agent/src/tools/writeFile.ts
-```
-
-These act as the MCP-style tool interface exposed to the agent loop.
-
-### Trajectory logging
-
-File:
-
-```
-packages/agent/src/trajectory.ts
-```
-
-Each run writes JSONL events such as:
-
-```json
-{
-  "step": 1,
-  "action": "run_test",
-  "success": false
-}
-```
-
-Separate trajectory files are generated per benchmark test.
-
-## Evaluation harness
-
-Entry point:
-
-```
-packages/agent/src/eval.ts
-```
-
-The harness executes all benchmark cases, records execution statistics, and writes:
-
-```
-evals/report.json
-```
-
-Metrics include:
-
-* pass rate
-* duration
-* iterations
-* tool calls
-* files read
-* approval rejections
-
-## Safety model
-
-The project intentionally includes a review gate before any file mutation.
-
-Validation occurs prior to user approval so malformed or unsafe edits fail immediately.
-
-A dedicated canary test verifies that approval bypass attempts are detected.
-
-## Benchmark corpus
-
-The benchmark corpus contains intentionally broken implementations of:
-
-* math utilities
-* string utilities
-* validation
-* path utilities
-* token verification
-* authentication logic
-* configuration
-* integration behavior
-
-This provides a reproducible environment for measuring autonomous repair performance.
-
-## Design tradeoffs
-
-### Chosen
-
-* deterministic planner
-* explicit approval gate
-* minimal dependencies
-* reproducible benchmark corpus
-* JSONL trajectories
-
-### Not chosen
-
-* unrestricted LLM editing
-* arbitrary filesystem writes
-* automatic approval
-* network-dependent execution
-
-The goal of the project is reliable evaluation rather than unrestricted autonomous coding.
+## Deliberate Non-Goals
+- No heavy agent frameworks (LangGraph, AutoGen, CrewAI).
+- No arbitrary shell access or execution tools.
+- No direct file modification inside `propose_edit`.

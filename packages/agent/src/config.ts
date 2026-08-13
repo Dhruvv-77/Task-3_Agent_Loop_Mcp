@@ -36,5 +36,5 @@ export const EVAL_REPORT = path.join(
 );
 
 // Budgets
-export const MAX_STEPS = 12;
-export const WALL_CLOCK_MS = 30_000;
+export const MAX_STEPS = Number(process.env.MAX_STEPS) || 12;
+export const WALL_CLOCK_MS = Number(process.env.WALL_CLOCK_MS) || 120_000;
