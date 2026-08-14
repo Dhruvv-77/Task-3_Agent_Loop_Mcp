@@ -1,5 +1,5 @@
 export function getApiUrl(): string {
-    return process.env.API_URL ?? "http://localhost:3000"; // BUG
+    throw new Error('API_URL is missing'); // BUG
 }
 
 export function getTimeout(): number {

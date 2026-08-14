@@ -1,34 +1,27 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import type { Patch } from "./planner.js";
+import { validateEditTarget } from "./safety.js";
+import type { PatchProposal } from "./tools/proposeEdit.js";
 
-export async function validateEdit(rootDir: string, patch: Patch): Promise<void> {
-    const filePath = path.join(rootDir, patch.file);
-    const current = await fs.readFile(filePath, "utf8");
-
-    if (!current.includes(patch.before)) {
-        throw new Error(
-            `Approval violation: expected text not found in file\nTARGET: ${filePath}\nBEFORE: ${JSON.stringify(patch.before)}\nFILE CONTAINS: ${JSON.stringify(current)}`
-        );
-    }
+export async function validateEdit(rootDir: string, patch: PatchProposal): Promise<void> {
+    // Delegates central path & target validation to safety.ts
+    await validateEditTarget(rootDir, patch);
 }
 
 export async function requestApproval(
     rootDir: string,
-    patch: Patch
+    patch: PatchProposal
 ): Promise<boolean> {
-    await validateEdit(rootDir, patch);
+    // Safety gate MUST run before any approval step (interactive or auto-approve)
+    await validateEditTarget(rootDir, patch);
 
     console.log("\n--- Proposed patch ---");
     console.log(JSON.stringify(patch, null, 2));
 
     // Auto-approve mode: used by the evaluation harness (pnpm eval).
-    // When AUTO_APPROVE=1, patches are applied without interactive prompts.
-    // pnpm agent fix --test ... always runs interactively.
+    // Triggers ONLY after safety validation has passed.
     if (process.env.AUTO_APPROVE === "1") {
-        console.log("Apply patch? (y/n): y [auto-approved]");
+        console.log("Apply patch? (y/n): y [auto-approved post-safety]");
         return true;
     }
 

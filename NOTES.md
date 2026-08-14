@@ -1,131 +1,20 @@
-# NOTES
+# NOTES — agent-loop-mcp
 
-## What this project demonstrates
+## 1. Why MCP over Ad-Hoc JSON Function Calling
+The Model Context Protocol (MCP) provides a standardized, schema-driven tool interface over stdio JSON-RPC. Using MCP decouples tool execution and path safety from agent logic, allowing tools (`read_file`, `list_dir`, `grep`, `propose_edit`, `run_test`) to be exposed securely to any LLM client or IDE integration without giving arbitrary shell permissions.
 
-This project was built as a compact benchmark for an autonomous code-repair loop rather than a production-grade coding agent.
+## 2. Stuck-Loop Detector Findings
+In evaluation runs with models like `qwen2.5:7b-instruct`, models occasionally enter repetitive loops (e.g. repeatedly calling `read_file` or `propose_edit` with identical arguments when uncertain how to proceed). The 3-consecutive-identical-call detector (`sameCallCount >= 3`) catches this behavior early, triggering a clean `stuck_loop` halt early in the execution instead of wasting the full 12-step budget.
 
-The implementation intentionally focuses on:
+## 3. Ollama Model Reliability (`qwen2.5:7b-instruct`)
+- **Tool Calling**: `qwen2.5:7b-instruct` performs reliably when system prompts strictly enforce single tool call JSON output formatting. Setting `format: "json"` in the Ollama `/api/chat` payload reduces malformed outputs.
+- **Context Handling**: The model respects transcript history when prior tool results (file contents and test failure logs) are appended as `user` observations.
 
-* deterministic behavior
-* reproducible evaluation
-* explicit human approval
-* safe file modification
-* trajectory logging
-* measurable benchmark results
+## 4. Safety Guardrails & Canary Tests
+The approval gate in `approval.ts` relies on `safety.ts` to enforce non-LLM safety checks before prompting or auto-approving:
+- Path traversal (`../`, `../../`) and forbidden directories (`node_modules`, `evals`) are rejected immediately.
+- Edit proposals must contain exact `before` snippet matches; missing snippets trigger `SafetyError` and log `approval_gate_violation`.
+- `evals/canary-approval.test.ts` programmatically verifies that safety violations abort execution.
 
-The benchmark corpus consists of intentionally broken utilities and authentication helpers that can be repaired through small source-level edits.
-
-## Current limitations
-
-### Deterministic planner
-
-The planner currently maps known benchmark tests to predefined edits.
-
-This makes evaluation reproducible and avoids nondeterminism from LLM output, but it does not generalize to arbitrary codebases.
-
-### Limited file discovery
-
-The loop reads the failing test and a small set of related source files.
-
-A production agent would perform broader dependency discovery and semantic search across the repository.
-
-### No automatic corpus reset
-
-The benchmark corpus remains modified after successful repair.
-
-A stronger evaluation harness would restore a fresh broken copy before each benchmark run so repair metrics remain comparable across repeated executions.
-
-### Minimal patch synthesis
-
-Edits are currently generated from explicit before/after patterns.
-
-A more advanced version could generate patches from:
-
-* AST transformations
-* symbolic analysis
-* static diagnostics
-* LLM reasoning
-
-### Single-agent architecture
-
-The project uses one repair loop.
-
-Possible extensions include:
-
-* planner agent
-* code search agent
-* patch generation agent
-* verification agent
-* reviewer agent
-
-## Safety properties
-
-The approval gate intentionally prevents several classes of unsafe behavior.
-
-Rejected automatically:
-
-* edits outside the project root
-* path traversal attempts
-* patches whose expected text is not present
-* malformed file modifications
-
-This provides a simple but useful guardrail before any filesystem write occurs.
-
-## Future improvements
-
-### Semantic retrieval
-
-Index the repository and retrieve relevant files using embeddings rather than deterministic mappings.
-
-### AST-aware editing
-
-Modify syntax trees directly instead of string replacement.
-
-### Better metrics
-
-Record:
-
-* patch size
-* token usage
-* edit distance
-* retry causes
-* approval latency
-
-### Parallel investigation
-
-Allow multiple candidate patches to be generated and verified concurrently.
-
-### Automatic benchmark reset
-
-Restore the broken corpus before every evaluation run to obtain meaningful repair iterations and tool-call statistics.
-
-## Repository structure
-
-```text
-packages/
-  agent/
-    src/
-      cli.ts
-      loop.ts
-      planner.ts
-      approval.ts
-      trajectory.ts
-      eval.ts
-      tools/
-    trajectories/
-
-corpus/
-  mini-auth-utils-broken/
-
-evals/
-  report.json
-```
-
-## Final benchmark result
-
-Latest evaluation:
-
-* **15 / 15 benchmark cases solved**
-* **100% pass rate**
-
-The repository is intentionally small enough to understand end-to-end while still demonstrating the complete repair pipeline: test execution, diagnosis, file inspection, approval, patch application, verification, trajectory logging, and evaluation.
+## 5. Outside-Tool-Surface Scenarios
+For hard scenarios where the root cause lies outside the tool surface (e.g. missing environment variables in `config.env.test.ts`), the agent is instructed to report `unfixable_reported` or handle environmental fixes rather than fabricating invalid source edits.
