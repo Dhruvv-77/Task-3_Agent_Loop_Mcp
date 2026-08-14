@@ -7,7 +7,7 @@
 ```text
                   +--------------------------------+
                   |         Ollama LLM             |
-                  |     qwen2.5:3b-instruct        |
+                  |     qwen2.5:7b-instruct        |
                   +---------------+----------------+
                                   |
                         Single Tool Call (JSON)
@@ -39,7 +39,7 @@
 ## Component Interfaces & Contracts
 
 ### 1. Model Client (`packages/agent/src/model.ts`)
-- Communicates with local Ollama (`http://127.0.0.1:11434`, `qwen2.5:3b-instruct`).
+- Communicates with local Ollama (`http://127.0.0.1:11434`, default `qwen2.5:7b-instruct`).
 - Requests exactly **one** JSON tool call per model turn.
 - Validates returned tool name and arguments.
 
@@ -63,7 +63,7 @@ Exposes 5 core tools over stdio JSON-RPC:
 Monitors agent iterations and enforces explicit halting conditions:
 - `test_passed`: Target test execution succeeds.
 - `step_budget_exhausted`: Step count exceeds `MAX_STEPS` (12).
-- `wall_clock_exhausted`: Duration exceeds `WALL_CLOCK_MS` (30,000 ms).
+- `wall_clock_exhausted`: Duration exceeds `WALL_CLOCK_MS` (120,000 ms).
 - `stuck_loop`: Model issues identical tool call + arguments 3 times consecutively.
 - `approval_gate_violation`: Safety gate detects invalid path or missing target snippet.
 - `unfixable_reported`: Model identifies environment problem outside tool surface.

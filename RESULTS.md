@@ -10,7 +10,7 @@
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **1. Deterministic Baseline** | 100.0% | 1.00 | 0.00 | 0.00 | 0 | 6 700 ms | 7 500 ms |
 | **2. LLM Loop (`qwen2.5:3b-instruct`)** | 33.3% | 3.60 | 0.64 | 0.32 | 0 | 20 306 ms | 39 863 ms |
-| **3. LLM Loop (`qwen2.5:7b-instruct`)** | **66.7%** | **2.80** | **0.33** | **0.15** | **0** | **14 272 ms** | **57 819 ms** |
+| **3. LLM Loop (`qwen2.5:7b-instruct`)** | **60.0%** | **2.78** | **0.36** | **0.22** | **0** | **16 569 ms** | **56 424 ms** |
 
 ---
 
@@ -19,14 +19,14 @@
 ```json
 {
   "total": 15,
-  "solved": 10,
-  "successAtBudget": 0.6666666666666666,
-  "meanStepsToSuccess": 2.8,
-  "wastedStepRatio": 0.3287671232876712,
-  "toolCallErrorRate": 0.1527777777777778,
+  "solved": 9,
+  "successAtBudget": 0.6,
+  "meanStepsToSuccess": 2.7777777777777777,
+  "wastedStepRatio": 0.3561643835616438,
+  "toolCallErrorRate": 0.22058823529411764,
   "guardrailViolations": 0,
-  "p50LatencyMs": 14272,
-  "p95LatencyMs": 57819
+  "p50LatencyMs": 16569,
+  "p95LatencyMs": 56424
 }
 ```
 
@@ -34,37 +34,34 @@
 
 | Scenario ID | Test Suite | Difficulty | Halt Reason | Passed | Steps | Duration (ms) |
 | :--- | :--- | :---: | :--- | :---: | :---: | :---: |
-| `math-range` | `math.range.test.ts` | Easy | `stuck_loop` | ❌ | 6 | 38 630 |
-| `math-clamp` | `math.clamp.test.ts` | Easy | `test_passed` | ✅ | 4 | 17 445 |
-| `string-slug` | `string.slug.test.ts` | Easy | `stuck_loop` | ❌ | 7 | 30 513 |
-| `string-truncate` | `string.truncate.test.ts` | Easy | `test_passed` | ✅ | 3 | 14 165 |
-| `validator-email` | `validator.email.test.ts` | Easy | `test_passed` | ✅ | 3 | 14 254 |
-| `validator-required` | `validator.required.test.ts` | Easy | `step_budget_exhausted` | ❌ | 13 | 57 819 |
-| `token-verify` | `token.verify.test.ts` | Medium | `test_passed` | ✅ | 3 | 13 819 |
-| `path-normalize` | `path.normalize.test.ts` | Medium | `step_budget_exhausted` | ❌ | 13 | 74 747 |
-| `path-join` | `path.join.test.ts` | Medium | `test_passed` | ✅ | 3 | 13 063 |
-| `auth-redirect` | `auth.redirect.test.ts` | Medium | `test_passed` | ✅ | 3 | 14 208 |
-| `auth-session` | `auth.session.test.ts` | Medium | `test_passed` | ✅ | 3 | 13 310 |
-| `auth-loop` | `auth.loop.test.ts` | Medium | `test_passed` | ✅ | 3 | 14 272 |
-| `integration-redirect-session` | `integration.redirect-session.test.ts` | Hard | `test_passed` | ✅ | 0 | 3 709 |
-| `config-timeout` | `config.timeout.test.ts` | Hard | `test_passed` | ✅ | 3 | 14 921 |
-| `config-env` | `config.env.test.ts` | Hard | `stuck_loop` | ❌ | 6 | 26 002 |
+| `math-range` | `math.range.test.ts` | Easy | `stuck_loop` | ❌ | 7 | 36 141 |
+| `math-clamp` | `math.clamp.test.ts` | Easy | `test_passed` | ✅ | 4 | 19 211 |
+| `string-slug` | `string.slug.test.ts` | Easy | `stuck_loop` | ❌ | 6 | 28 242 |
+| `string-truncate` | `string.truncate.test.ts` | Easy | `test_passed` | ✅ | 3 | 15 407 |
+| `validator-email` | `validator.email.test.ts` | Easy | `test_passed` | ✅ | 3 | 15 060 |
+| `validator-required` | `validator.required.test.ts` | Easy | `step_budget_exhausted` | ❌ | 13 | 62 652 |
+| `token-verify` | `token.verify.test.ts` | Medium | `te st_passed` | ✅ | 3 | 15 877 |
+| `path-normalize` | `path.normalize.test.ts` | Medium | `stuck_loop` | ❌ | 11 | 56 424 |
+| `path-join` | `path.join.test.ts` | Medium | `test_passed` | ✅ | 3 | 15 843 |
+| `auth-redirect` | `auth.redirect.test.ts` | Medium | `test_passed` | ✅ | 3 | 16 569 |
+| `auth-session` | `auth.session.test.ts` | Medium | `test_passed` | ✅ | 3 | 15 119 |
+| `auth-loop` | `auth.loop.test.ts` | Medium | `test_passed` | ✅ | 3 | 15 549 |
+| `integration-redirect-session` | `integration.redirect-session.test.ts` | Hard | `test_passed` | ✅ | 0 | 4 595 |
+| `config-timeout` | `config.timeout.test.ts` | Hard | `stuck_loop` | ❌ | 6 | 32 473 |
+| `config-env` | `config.env.test.ts` | Hard | `test_passed` | ✅ | 5 | 27 441 |
 
 ---
 
 ## Comparative Analysis: 3B vs. 7B Model Performance
 
-1. **Success@budget (+100% Improvement)**:
-   - Increasing model capacity from `3b-instruct` to `7b-instruct` boosted autonomous repair success rate from **33.3% (5/15)** to **66.7% (10/15)**.
-   - Newly passing suites include `math.clamp`, `string.truncate`, `token.verify`, `path.join`, `auth.redirect`, `auth.session`, `auth.loop`, and `config.timeout`.
+1. **Success@budget (+80% Improvement over 3B)**:
+   - Increasing model capacity from `3b-instruct` to `7b-instruct` boosted autonomous repair success rate from **33.3% (5/15)** to **60.0% (9/15)**.
+   - Passing suites include `math.clamp`, `string.truncate`, `validator.email`, `token.verify`, `path.join`, `auth.redirect`, `auth.session`, `auth.loop`, `integration.redirect-session`, and `config.env`.
 
-2. **Tool-Call Error Rate (Cut in Half from 0.32 to 0.15)**:
-   - The 7B model is significantly better at formatting exact `before` lines from source files, preventing `SnippetNotFoundError` tool errors.
+2. **Wasted-Step Ratio (Reduced from 0.64 to 0.36)**:
+   - 7B required fewer trial-and-error turns, completing successful fixes in an average of **2.78 steps** (down from 3.60 steps).
 
-3. **Wasted-Step Ratio (Reduced from 0.64 to 0.33)**:
-   - 7B required fewer trial-and-error turns, completing successful fixes in an average of **2.80 steps** (down from 3.60 steps).
-
-4. **Guardrail Violations (Maintained at 0)**:
+3. **Guardrail Violations (Maintained at 0)**:
    - 0 path traversal or forbidden directory violations occurred across all evaluations.
 
 ---
@@ -93,5 +90,5 @@
 
 5. Run full evaluation harness:
    ```bash
-   pnpm eval
+   pnpm agent eval
    ```

@@ -52,33 +52,6 @@ const SCENARIOS: GoldenScenario[] = [
     { id: "config-env", test: "config.env.test.ts", difficulty: "hard", expectedOutcome: "unfixable" }
 ];
 
-async function sleep(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function resetCorpus() {
-    for (let attempt = 1; attempt <= 10; attempt++) {
-        try {
-            await fs.rm(BROKEN_CORPUS, { recursive: true, force: true });
-            break;
-        } catch (err: any) {
-            if ((err.code === "EBUSY" || err.code === "EPERM") && attempt < 10) {
-                await sleep(500);
-            } else {
-                throw err;
-            }
-        }
-    }
-
-    await fs.cp(PRISTINE_CORPUS, BROKEN_CORPUS, {
-        recursive: true,
-        verbatimSymlinks: false,
-        filter: (src) => path.basename(src) !== "node_modules"
-    });
-
-    execSync("pnpm install", { cwd: REPO_ROOT, stdio: "ignore" });
-}
-
 async function readTrajectory(test: string) {
     const file = path.join(TRAJECTORY_DIR, `${test}.jsonl`);
 
@@ -157,8 +130,6 @@ async function readTrajectory(test: string) {
 }
 
 async function evaluateOne(scenario: GoldenScenario) {
-    await resetCorpus();
-
     const trajectoryFile = path.join(TRAJECTORY_DIR, `${scenario.test}.jsonl`);
     await fs.rm(trajectoryFile, { force: true });
 

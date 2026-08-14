@@ -12,7 +12,7 @@ import { applyEdit } from "./tools/applyEdit.js";
 import { SafetyViolationError, FileNotFoundError, SnippetNotFoundError } from "./safety.js";
 import { createState, markFileRead, type AgentState } from "./state.js";
 import { log, clearLog, setTrajectoryFile } from "./trajectory.js";
-import { BROKEN_CORPUS, MAX_STEPS, WALL_CLOCK_MS } from "./config.js";
+import { BROKEN_CORPUS, MAX_STEPS, WALL_CLOCK_MS, resetCorpus } from "./config.js";
 
 // ANSI Terminal Colors Utility
 const colors = {
@@ -54,6 +54,7 @@ If the issue is in the external environment and cannot be fixed with source code
 {"tool": "propose_edit", "arguments": {"file": "unfixable", "before": "", "after": "", "reason": "Problem is outside tool surface"}}`;
 
 export async function runLoop(test: string): Promise<AgentState> {
+    await resetCorpus();
     const state = createState(test);
 
     setTrajectoryFile(test);

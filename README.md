@@ -28,7 +28,12 @@ pnpm install
 pnpm exec tsc --noEmit
 ```
 
-#### Run Safety & Canary Test Suites
+#### Run All Safety & Canary Test Suites
+```bash
+pnpm test
+```
+
+#### Individual Canary & Guardrail Tests
 ```bash
 pnpm test:canary      # Verifies safety & approval gate violation handling
 pnpm test:stuck       # Verifies 3x consecutive call stuck-loop detection
@@ -38,7 +43,7 @@ pnpm test:outside     # Verifies unfixable outside tool surface reporting
 
 #### Run Full Unattended Evaluation Harness
 ```bash
-pnpm eval
+pnpm agent eval
 ```
 
 #### Run Single Interactive Fix
@@ -69,3 +74,4 @@ pnpm mcp
 See [RESULTS.md](RESULTS.md) for full benchmark results across 15 golden scenarios (6 Easy, 6 Medium, 3 Hard).
 See [DESIGN.md](DESIGN.md) for detailed architecture diagrams and component specs.
 See [NOTES.md](NOTES.md) for developer findings and MCP rationale.
+See [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for full directory & file structure documentation.
